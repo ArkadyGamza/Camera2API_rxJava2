@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/holo_orange_dark">
+
+    <camera.AutoFitTextureView
+        android:id="@+id/customCameraActivity_textureView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_gravity="center" />
+
+    <ImageView
+        android:id="@+id/customCameraActivity_switchCamera"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="right|top"
+        android:layout_margin="16dp"
+        android:background="@color/shutter_bg"
+        android:padding="16dp"
+        android:src="@drawable/ic_camera_front_black_24dp"
+        android:tint="@android:color/white" />
+
+    <ImageView
+        android:id="@+id/customCameraActivity_takePhoto"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_margin="16dp"
+        android:background="@color/shutter_bg"
+        android:padding="32dp"
+        android:src="@drawable/ic_camera_enhance_black_24dp"
+        android:tint="@android:color/white" />
+
+</FrameLayout>
