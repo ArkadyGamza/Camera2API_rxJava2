@@ -30,6 +30,7 @@ dependencies {
         exclude group: 'com.android.support', module: 'support-annotations'
     })
     compile 'com.android.support:appcompat-v7:25.0.0'
+    compile 'com.squareup.picasso:picasso:2.5.2'
     testCompile 'junit:junit:4.12'
     compile 'io.reactivex:rxandroid:1.2.1'
 // Because RxAndroid releases are few and far between, it is recommended you also

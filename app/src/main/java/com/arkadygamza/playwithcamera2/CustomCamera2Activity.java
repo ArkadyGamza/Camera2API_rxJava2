@@ -1,16 +1,19 @@
-package camera;
+package com.arkadygamza.playwithcamera2;
 
 import android.app.Activity;
+import android.content.Intent;
 import android.content.res.Configuration;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.v7.app.AppCompatActivity;
 
-import com.arkadygamza.playwithcamera2.R;
-
 import java.io.File;
 import java.io.IOException;
+
+import camera.AutoFitTextureView;
+import camera.CameraController;
+import camera.OpenCameraException;
 
 
 public class CustomCamera2Activity extends AppCompatActivity {
@@ -27,7 +30,7 @@ public class CustomCamera2Activity extends AppCompatActivity {
         File outputDir = getCacheDir(); // context being the Activity pointer
         File outputFile = null;
         try {
-            outputFile = File.createTempFile("prefix", "extension", outputDir);
+            outputFile = File.createTempFile("prefix", ".jpg", outputDir);
         }
         catch (IOException e) {
             e.printStackTrace();
@@ -85,8 +88,8 @@ public class CustomCamera2Activity extends AppCompatActivity {
     private final CameraController.Callback mRxCamerController21Callback = new CameraController.Callback() {
         @Override
         public void onPhotoTaken(@NonNull String photoUrl, @NonNull Integer photoSourceType) {
-//            setResult(Activity.RESULT_OK);
-//            finish();
+            Intent intent = ShowPhotoActivity.IntentHelper.createIntent(CustomCamera2Activity.this, photoUrl);
+            startActivity(intent);
         }
 
         @Override

@@ -33,7 +33,7 @@ import rx.subjects.PublishSubject;
 import rx.subscriptions.CompositeSubscription;
 
 @TargetApi(21)
-class CameraController {
+public class CameraController {
 
     private static final String TAG = CameraController.class.getName();
 
@@ -54,8 +54,8 @@ class CameraController {
     private final PublishSubject<Object> mOnSwitchCamera = PublishSubject.create();
     private final PublishSubject<SurfaceTexture> mOnSurfaceTextureAvailable = PublishSubject.create();
 
-    CameraController(Context context, @NonNull Callback callback, @NonNull String photoFileUrl,
-                     @NonNull AutoFitTextureView textureView, int layoutOrientation) {
+    public CameraController(Context context, @NonNull Callback callback, @NonNull String photoFileUrl,
+                            @NonNull AutoFitTextureView textureView, int layoutOrientation) {
         mContext = context;
         mCallback = callback;
         mLayoutOrientation = layoutOrientation;
@@ -64,11 +64,11 @@ class CameraController {
         mTextureView = textureView;
     }
 
-    void takePhoto() {
+    public void takePhoto() {
         mOnShutterClick.onNext(null);
     }
 
-    void switchCamera() {
+    public void switchCamera() {
         mOnSwitchCamera.onNext(null);
     }
 
