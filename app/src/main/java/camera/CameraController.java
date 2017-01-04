@@ -348,7 +348,7 @@ public class CameraController {
     @NonNull
     private CaptureRequest.Builder createAfAeBuilder(State state) throws CameraAccessException {
         final CaptureRequest.Builder builder;
-        builder = state.cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
+        builder = state.cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
         builder.addTarget(state.previewSurface);
         setup3Auto(builder);
         builder.set(CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_START);
