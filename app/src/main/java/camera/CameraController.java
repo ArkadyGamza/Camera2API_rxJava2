@@ -11,6 +11,7 @@ import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
+import android.hardware.camera2.CameraMetadata;
 import android.hardware.camera2.CaptureRequest;
 import android.media.ImageReader;
 import android.os.Bundle;
@@ -217,6 +218,7 @@ public class CameraController {
             .share();
 
         mSubscriptions.add(Observable.combineLatest(previewObservable, mOnShutterClick, (state, o) -> state)
+            .flatMap(this::triggerAfAe)
             .flatMap(this::captureStillPicture)
             .subscribe(state -> {
             }, this::onError));
@@ -320,6 +322,18 @@ public class CameraController {
     }
 
     @NonNull
+    private Observable<State> triggerAfAe(State state) {
+        Log.d(TAG, "\ttriggerAfAe");
+        try {
+            final CaptureRequest.Builder builder = createAfAeBuilder(state);
+            return CameraRxWrapper.capture(state, builder.build());
+        }
+        catch (CameraAccessException e) {
+            return Observable.error(e);
+        }
+    }
+
+    @NonNull
     private Observable<State> captureStillPicture(State state) {
         Log.d(TAG, "\tcaptureStillPicture");
         try {
@@ -332,16 +346,23 @@ public class CameraController {
     }
 
     @NonNull
+    private CaptureRequest.Builder createAfAeBuilder(State state) throws CameraAccessException {
+        final CaptureRequest.Builder builder;
+        builder = state.cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
+        builder.addTarget(state.previewSurface);
+        setup3Auto(builder);
+        builder.set(CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_START);
+        builder.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CameraMetadata.CONTROL_AE_PRECAPTURE_TRIGGER_START);
+        return builder;
+    }
+
+    @NonNull
     private CaptureRequest.Builder createStillPictureBuilder(State state) throws CameraAccessException {
         final CaptureRequest.Builder builder;
         builder = state.cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
+        builder.set(CaptureRequest.CONTROL_CAPTURE_INTENT, CaptureRequest.CONTROL_CAPTURE_INTENT_STILL_CAPTURE);
         builder.addTarget(state.imageReader.getSurface());
-        builder.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO);
-        builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
-//            builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON_AUTO_FLASH);
-//            builder.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_OFF);
         setup3Auto(builder);
-
 
         int rotation = mWindowManager.getDefaultDisplay().getRotation();
         builder.set(CaptureRequest.JPEG_ORIENTATION, CameraOrientationHelper.getJpegOrientation(mCameraCharacteristics, rotation));
@@ -353,7 +374,6 @@ public class CameraController {
         CaptureRequest.Builder builder = captureSession.getDevice().createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
         builder.addTarget(previewSurface);
         setup3Auto(builder);
-        // Flash is automatically enabled when necessary.
         return builder;
     }
 
@@ -386,6 +406,9 @@ public class CameraController {
         else {
             builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON);
         }
+
+//        builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON_ALWAYS_FLASH);
+//        builder.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_SINGLE);
 
         // If there is an auto-magical white balance control mode available, use it.
         int[] awbModes = mCameraCharacteristics.get(CameraCharacteristics.CONTROL_AWB_AVAILABLE_MODES);
