@@ -13,6 +13,8 @@ import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CameraMetadata;
 import android.hardware.camera2.CaptureRequest;
+import android.hardware.camera2.CaptureResult;
+import android.hardware.camera2.TotalCaptureResult;
 import android.media.ImageReader;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
@@ -34,7 +36,7 @@ import rx.subscriptions.CompositeSubscription;
 @TargetApi(21)
 public class CameraController {
 
-    private static final String TAG = CameraController.class.getName();
+    static final String TAG = CameraController.class.getName();
 
     @NonNull
     private final Callback mCallback;
@@ -218,7 +220,8 @@ public class CameraController {
             .share();
 
         mSubscriptions.add(Observable.combineLatest(previewObservable, mOnShutterClick, (state, o) -> state)
-            .flatMap(this::triggerAfAe)
+            .flatMap(this::waitForAf)
+            .flatMap(this::waitForAe)
             .flatMap(this::captureStillPicture)
             .subscribe(state -> {
             }, this::onError));
@@ -321,12 +324,19 @@ public class CameraController {
         return false;
     }
 
-    @NonNull
-    private Observable<State> triggerAfAe(State state) {
-        Log.d(TAG, "\ttriggerAfAe");
+    private Observable<CameraController.State> waitForAf(CameraController.State state) {
         try {
-            final CaptureRequest.Builder builder = createAfAeBuilder(state);
-            return CameraRxWrapper.capture(state, builder.build());
+            return AfHelper.waitForAf(state, createPreviewBuilder(state.captureSession, state.previewSurface));
+        }
+        catch (CameraAccessException e) {
+            return Observable.error(e);
+        }
+    }
+
+    @NonNull
+    private Observable<State> waitForAe(State state) {
+        try {
+            return AeHelper.waitForAe(state, createPreviewBuilder(state.captureSession, state.previewSurface));
         }
         catch (CameraAccessException e) {
             return Observable.error(e);
@@ -346,21 +356,11 @@ public class CameraController {
     }
 
     @NonNull
-    private CaptureRequest.Builder createAfAeBuilder(State state) throws CameraAccessException {
-        final CaptureRequest.Builder builder;
-        builder = state.cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
-        builder.addTarget(state.previewSurface);
-        setup3Auto(builder);
-        builder.set(CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_START);
-        builder.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CameraMetadata.CONTROL_AE_PRECAPTURE_TRIGGER_START);
-        return builder;
-    }
-
-    @NonNull
     private CaptureRequest.Builder createStillPictureBuilder(State state) throws CameraAccessException {
         final CaptureRequest.Builder builder;
-        builder = state.cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
+        builder = state.cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_ZERO_SHUTTER_LAG);
         builder.set(CaptureRequest.CONTROL_CAPTURE_INTENT, CaptureRequest.CONTROL_CAPTURE_INTENT_STILL_CAPTURE);
+        builder.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CameraMetadata.CONTROL_AE_PRECAPTURE_TRIGGER_IDLE);
         builder.addTarget(state.imageReader.getSurface());
         setup3Auto(builder);
 
@@ -370,7 +370,7 @@ public class CameraController {
     }
 
     @NonNull
-    private CaptureRequest.Builder createPreviewBuilder(CameraCaptureSession captureSession, Surface previewSurface) throws CameraAccessException {
+    CaptureRequest.Builder createPreviewBuilder(CameraCaptureSession captureSession, Surface previewSurface) throws CameraAccessException {
         CaptureRequest.Builder builder = captureSession.getDevice().createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
         builder.addTarget(previewSurface);
         setup3Auto(builder);
@@ -450,6 +450,7 @@ public class CameraController {
         ImageReader imageReader;
         CameraCaptureSession captureSession;
         SurfaceTexture surfaceTexture;
+        TotalCaptureResult result;
     }
 
     public interface Callback {
