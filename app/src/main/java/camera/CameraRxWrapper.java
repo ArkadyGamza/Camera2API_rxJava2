@@ -13,9 +13,7 @@ import android.util.Log;
 import android.view.Surface;
 
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.Callable;
 
 import rx.Observable;
 import rx.Subscriber;
@@ -100,77 +98,6 @@ public class CameraRxWrapper {
                 }
             }
         };
-    }
-
-
-    public static Observable<CameraController.State> capture(@NonNull CameraController.State state, @NonNull CaptureRequest request) {
-        return Observable.create(subscriber -> {
-            try {
-                CameraCaptureSession.CaptureCallback listener = new CameraCaptureSession.CaptureCallback() {
-                    @Override
-                    public void onCaptureCompleted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
-                        if (!subscriber.isUnsubscribed()) {
-                            state.result = result;
-                            subscriber.onNext(state);
-                            subscriber.onCompleted();
-                        }
-                    }
-
-                    @Override
-                    public void onCaptureFailed(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull CaptureFailure failure) {
-                        if (!subscriber.isUnsubscribed()) {
-                            subscriber.onError(new CameraCaptureFailedException(failure));
-                        }
-                    }
-                };
-
-                dumpRequest(request);
-                state.captureSession.captureBurst(Collections.singletonList(request), new MyLogger(listener), null);
-            }
-            catch (CameraAccessException e) {
-                if (!subscriber.isUnsubscribed()) {
-                    subscriber.onError(e);
-                }
-            }
-        });
-    }
-
-    public static Observable<CameraController.State> setRepeatingRequest(@NonNull CameraController.State state, @NonNull CaptureRequest request) {
-        return Observable.create(subscriber -> {
-            try {
-                Log.d(TAG, "\tsetRepeatingRequest");
-
-                if (!state.previewSurface.isValid()) {
-                    Log.d(TAG, "\tsetRepeatingRequest - surface is not valid!");
-                    if (!subscriber.isUnsubscribed()) {
-                        subscriber.onCompleted();
-                    }
-                    return;
-                }
-
-//                state.captureSession.stopRepeating();
-                state.captureSession.setRepeatingRequest(request, new CameraCaptureSession.CaptureCallback() {
-
-                    @Override
-                    public void onCaptureCompleted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
-                        if (!subscriber.isUnsubscribed()) {
-                            subscriber.onNext(state);
-                        }
-                    }
-
-                    @Override
-                    public void onCaptureFailed(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull CaptureFailure failure) {
-                        subscriber.onError(new CameraCaptureFailedException(failure));
-                    }
-
-                }, null);
-            }
-            catch (CameraAccessException e) {
-                if (!subscriber.isUnsubscribed()) {
-                    subscriber.onError(e);
-                }
-            }
-        });
     }
 
     @NonNull

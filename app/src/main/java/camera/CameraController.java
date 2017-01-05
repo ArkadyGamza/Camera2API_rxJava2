@@ -305,7 +305,9 @@ public class CameraController {
     private Observable<State> startPreview(@NonNull State state) {
         Log.d(TAG, "\tstartPreview");
         try {
-            return CameraRxWrapper.setRepeatingRequest(state, createPreviewBuilder(state.captureSession, state.previewSurface).build());
+            return CameraRxWrapper
+                .fromSetRepeatingRequest(state.captureSession, createPreviewBuilder(state.captureSession, state.previewSurface).build())
+                .map(result -> state);
         }
         catch (CameraAccessException e) {
             return Observable.error(e);
@@ -348,7 +350,8 @@ public class CameraController {
         Log.d(TAG, "\tcaptureStillPicture");
         try {
             final CaptureRequest.Builder builder = createStillPictureBuilder(state);
-            return CameraRxWrapper.capture(state, builder.build());
+            return CameraRxWrapper.fromCapture(state.captureSession, builder.build())
+                .map(result -> state);
         }
         catch (CameraAccessException e) {
             return Observable.error(e);
@@ -450,7 +453,6 @@ public class CameraController {
         ImageReader imageReader;
         CameraCaptureSession captureSession;
         SurfaceTexture surfaceTexture;
-        TotalCaptureResult result;
     }
 
     public interface Callback {
