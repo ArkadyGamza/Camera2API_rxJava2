@@ -9,12 +9,16 @@ import android.support.annotation.NonNull;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import rx.Observable;
 import rx.Single;
+import rx.android.schedulers.AndroidSchedulers;
 
 @TargetApi(21)
 class ConvergeWaiter {
+
+    private static final int TIMEOUT_SECONDS = 3;
 
     private final CaptureRequest.Key<Integer> mRequestTriggerKey;
     private final int mRequestTriggerStartValue;
@@ -43,11 +47,20 @@ class ConvergeWaiter {
         Observable<CaptureResult> triggerObservable = CameraRxWrapper.fromCapture(state.captureSession, triggerRequest);
         Observable<CaptureResult> previewObservable = CameraRxWrapper.fromSetRepeatingRequest(state.captureSession, previewRequest);
         RequestStateMachine requestStateMachine = new RequestStateMachine();
-        return Observable
+        Observable<CameraController.State> convergeObservable = Observable
             .merge(previewObservable, triggerObservable) //order matters
             .first(result -> filterWithStateMachine(result, requestStateMachine))
-            .toSingle()
             .map(result -> state);
+
+        Observable<CameraController.State> timeOutObservable = Observable
+            .just(state)
+            .delay(TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .observeOn(AndroidSchedulers.mainThread());
+
+        return Observable
+            .merge(convergeObservable, timeOutObservable)
+            .first()
+            .toSingle();
     }
 
     private boolean filterWithStateMachine(@NonNull CaptureResult captureResult, @NonNull RequestStateMachine stateMachine) {
@@ -68,7 +81,7 @@ class ConvergeWaiter {
     }
 
     static class Factory {
-        static final List<Integer> afReadyStates = Collections.unmodifiableList(
+        private static final List<Integer> afReadyStates = Collections.unmodifiableList(
             Arrays.asList(
                 CaptureResult.CONTROL_AF_STATE_INACTIVE,
                 CaptureResult.CONTROL_AF_STATE_FOCUSED_LOCKED,
@@ -76,7 +89,7 @@ class ConvergeWaiter {
             )
         );
 
-        static final List<Integer> aeReadyStates = Collections.unmodifiableList(
+        private static final List<Integer> aeReadyStates = Collections.unmodifiableList(
             Arrays.asList(
                 CaptureResult.CONTROL_AE_STATE_INACTIVE,
                 CaptureResult.CONTROL_AE_STATE_FLASH_REQUIRED,

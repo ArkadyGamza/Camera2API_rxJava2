@@ -7,7 +7,7 @@ class RequestStateMachine {
     private boolean mIsWaitingForTrigger = true;
     private long mLastTriggeredFrameNumber;
 
-    public boolean updateAndCheckIfReady(boolean isResponseForTriggeredRequest, long frameNumber, boolean isResonseStateReady) {
+    boolean updateAndCheckIfReady(boolean isResponseForTriggeredRequest, long frameNumber, boolean isResonseStateReady) {
         if (mIsWaitingForTrigger) {
             if (isResponseForTriggeredRequest && frameNumber >= mLastTriggeredFrameNumber) {
                 mLastTriggeredFrameNumber = frameNumber;
