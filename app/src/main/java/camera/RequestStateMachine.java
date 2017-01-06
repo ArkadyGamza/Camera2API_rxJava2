@@ -3,7 +3,7 @@ package camera;
 /**
  * Waits for the first response to trigger request, then waits for ready response (to any request).
  */
-class TriggerStateMachine {
+class RequestStateMachine {
     private boolean mIsWaitingForTrigger = true;
     private long mLastTriggeredFrameNumber;
 
