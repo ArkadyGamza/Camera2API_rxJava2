@@ -29,7 +29,7 @@ public class CameraRxWrapper {
     private static final String TAG = CameraRxWrapper.class.getName();
 
 
-    public static Observable<CaptureResult> fromCapture(@NonNull CameraCaptureSession captureSession, @NonNull CaptureRequest request) {
+    static Observable<CaptureResult> fromCapture(@NonNull CameraCaptureSession captureSession, @NonNull CaptureRequest request) {
         return Observable.create(subscriber -> {
             try {
                 dumpRequest(request);
@@ -43,7 +43,7 @@ public class CameraRxWrapper {
         });
     }
 
-    public static Observable<CaptureResult> fromSetRepeatingRequest(@NonNull CameraCaptureSession captureSession, @NonNull CaptureRequest request) {
+    static Observable<CaptureResult> fromSetRepeatingRequest(@NonNull CameraCaptureSession captureSession, @NonNull CaptureRequest request) {
         return Observable.create(subscriber -> {
             try {
                 dumpRequest(request);
@@ -75,7 +75,6 @@ public class CameraRxWrapper {
                     subscriber.onError(new CameraCaptureFailedException(failure));
                 }
             }
-
         };
     }
 

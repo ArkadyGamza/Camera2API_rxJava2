@@ -13,7 +13,6 @@ import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CameraMetadata;
 import android.hardware.camera2.CaptureRequest;
-import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.TotalCaptureResult;
 import android.media.ImageReader;
 import android.os.Bundle;
@@ -54,6 +53,9 @@ public class CameraController {
     private final PublishSubject<Object> mOnShutterClick = PublishSubject.create();
     private final PublishSubject<Object> mOnSwitchCamera = PublishSubject.create();
     private final PublishSubject<SurfaceTexture> mOnSurfaceTextureAvailable = PublishSubject.create();
+    private final ConvergeWaiter mAutoFocusConvergeWaiter = ConvergeWaiter.Factory.createAutoFocusConvergeWaiter();
+    private final ConvergeWaiter mAutoExposureConvergeWaiter = ConvergeWaiter.Factory.createAutoExposureConvergeWaiter();
+
 
     public CameraController(Context context, @NonNull Callback callback, @NonNull String photoFileUrl,
                             @NonNull AutoFitTextureView textureView, int layoutOrientation) {
@@ -305,7 +307,9 @@ public class CameraController {
     private Observable<State> startPreview(@NonNull State state) {
         Log.d(TAG, "\tstartPreview");
         try {
-            return CameraRxWrapper.setRepeatingRequest(state, createPreviewBuilder(state.captureSession, state.previewSurface).build());
+            return CameraRxWrapper
+                .fromSetRepeatingRequest(state.captureSession, createPreviewBuilder(state.captureSession, state.previewSurface).build())
+                .map(result -> state);
         }
         catch (CameraAccessException e) {
             return Observable.error(e);
@@ -326,7 +330,9 @@ public class CameraController {
 
     private Observable<CameraController.State> waitForAf(CameraController.State state) {
         try {
-            return AfHelper.waitForAf(state, createPreviewBuilder(state.captureSession, state.previewSurface));
+            return mAutoFocusConvergeWaiter
+                .waitForConverge(state, createPreviewBuilder(state.captureSession, state.previewSurface))
+                .toObservable();
         }
         catch (CameraAccessException e) {
             return Observable.error(e);
@@ -336,7 +342,9 @@ public class CameraController {
     @NonNull
     private Observable<State> waitForAe(State state) {
         try {
-            return AeHelper.waitForAe(state, createPreviewBuilder(state.captureSession, state.previewSurface));
+            return mAutoExposureConvergeWaiter
+                .waitForConverge(state, createPreviewBuilder(state.captureSession, state.previewSurface))
+                .toObservable();
         }
         catch (CameraAccessException e) {
             return Observable.error(e);
@@ -348,7 +356,8 @@ public class CameraController {
         Log.d(TAG, "\tcaptureStillPicture");
         try {
             final CaptureRequest.Builder builder = createStillPictureBuilder(state);
-            return CameraRxWrapper.capture(state, builder.build());
+            return CameraRxWrapper.fromCapture(state.captureSession, builder.build())
+                .map(result -> state);
         }
         catch (CameraAccessException e) {
             return Observable.error(e);
