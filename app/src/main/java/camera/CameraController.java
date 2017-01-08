@@ -13,6 +13,8 @@ import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CameraMetadata;
 import android.hardware.camera2.CaptureRequest;
+import android.hardware.camera2.CaptureResult;
+import android.hardware.camera2.TotalCaptureResult;
 import android.media.ImageReader;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
@@ -24,7 +26,6 @@ import android.view.TextureView;
 import android.view.WindowManager;
 
 import java.io.File;
-import java.util.logging.Logger;
 
 import rx.Observable;
 import rx.android.schedulers.AndroidSchedulers;
@@ -33,9 +34,9 @@ import rx.subjects.PublishSubject;
 import rx.subscriptions.CompositeSubscription;
 
 @TargetApi(21)
-class CameraController {
+public class CameraController {
 
-    private static final String TAG = CameraController.class.getName();
+    static final String TAG = CameraController.class.getName();
 
     @NonNull
     private final Callback mCallback;
@@ -54,8 +55,8 @@ class CameraController {
     private final PublishSubject<Object> mOnSwitchCamera = PublishSubject.create();
     private final PublishSubject<SurfaceTexture> mOnSurfaceTextureAvailable = PublishSubject.create();
 
-    CameraController(Context context, @NonNull Callback callback, @NonNull String photoFileUrl,
-                     @NonNull AutoFitTextureView textureView, int layoutOrientation) {
+    public CameraController(Context context, @NonNull Callback callback, @NonNull String photoFileUrl,
+                            @NonNull AutoFitTextureView textureView, int layoutOrientation) {
         mContext = context;
         mCallback = callback;
         mLayoutOrientation = layoutOrientation;
@@ -64,11 +65,11 @@ class CameraController {
         mTextureView = textureView;
     }
 
-    void takePhoto() {
+    public void takePhoto() {
         mOnShutterClick.onNext(null);
     }
 
-    void switchCamera() {
+    public void switchCamera() {
         mOnSwitchCamera.onNext(null);
     }
 
@@ -142,7 +143,7 @@ class CameraController {
 
         @Override
         public void onStart() {
-            
+
         }
 
         @Override
@@ -219,6 +220,8 @@ class CameraController {
             .share();
 
         mSubscriptions.add(Observable.combineLatest(previewObservable, mOnShutterClick, (state, o) -> state)
+            .flatMap(this::waitForAf)
+            .flatMap(this::waitForAe)
             .flatMap(this::captureStillPicture)
             .subscribe(state -> {
             }, this::onError));
@@ -309,25 +312,109 @@ class CameraController {
         }
     }
 
+    private static boolean contains(int[] modes, int mode) {
+        if (modes == null) {
+            return false;
+        }
+        for (int i : modes) {
+            if (i == mode) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private Observable<CameraController.State> waitForAf(CameraController.State state) {
+        try {
+            return AfHelper.waitForAf(state, createPreviewBuilder(state.captureSession, state.previewSurface));
+        }
+        catch (CameraAccessException e) {
+            return Observable.error(e);
+        }
+    }
+
+    @NonNull
+    private Observable<State> waitForAe(State state) {
+        try {
+            return AeHelper.waitForAe(state, createPreviewBuilder(state.captureSession, state.previewSurface));
+        }
+        catch (CameraAccessException e) {
+            return Observable.error(e);
+        }
+    }
+
     @NonNull
     private Observable<State> captureStillPicture(State state) {
         Log.d(TAG, "\tcaptureStillPicture");
         try {
-            final CaptureRequest.Builder captureBuilder;
-            captureBuilder = state.cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
-            captureBuilder.addTarget(state.imageReader.getSurface());
-            captureBuilder.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO);
-            captureBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
-            captureBuilder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON_AUTO_FLASH);
-            captureBuilder.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_OFF);
-
-
-            int rotation = mWindowManager.getDefaultDisplay().getRotation();
-            captureBuilder.set(CaptureRequest.JPEG_ORIENTATION, CameraOrientationHelper.getJpegOrientation(mCameraCharacteristics, rotation));
-            return CameraRxWrapper.capture(state, captureBuilder.build());
+            final CaptureRequest.Builder builder = createStillPictureBuilder(state);
+            return CameraRxWrapper.capture(state, builder.build());
         }
         catch (CameraAccessException e) {
             return Observable.error(e);
+        }
+    }
+
+    @NonNull
+    private CaptureRequest.Builder createStillPictureBuilder(State state) throws CameraAccessException {
+        final CaptureRequest.Builder builder;
+        builder = state.cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_ZERO_SHUTTER_LAG);
+        builder.set(CaptureRequest.CONTROL_CAPTURE_INTENT, CaptureRequest.CONTROL_CAPTURE_INTENT_STILL_CAPTURE);
+        builder.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CameraMetadata.CONTROL_AE_PRECAPTURE_TRIGGER_IDLE);
+        builder.addTarget(state.imageReader.getSurface());
+        setup3Auto(builder);
+
+        int rotation = mWindowManager.getDefaultDisplay().getRotation();
+        builder.set(CaptureRequest.JPEG_ORIENTATION, CameraOrientationHelper.getJpegOrientation(mCameraCharacteristics, rotation));
+        return builder;
+    }
+
+    @NonNull
+    CaptureRequest.Builder createPreviewBuilder(CameraCaptureSession captureSession, Surface previewSurface) throws CameraAccessException {
+        CaptureRequest.Builder builder = captureSession.getDevice().createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
+        builder.addTarget(previewSurface);
+        setup3Auto(builder);
+        return builder;
+    }
+
+    private void setup3Auto(CaptureRequest.Builder builder) {
+        // Enable auto-magical 3A run by camera device
+        builder.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO);
+
+        Float minFocusDist = mCameraCharacteristics.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE);
+
+        // If MINIMUM_FOCUS_DISTANCE is 0, lens is fixed-focus and we need to skip the AF run.
+        boolean noAFRun = (minFocusDist == null || minFocusDist == 0);
+
+        if (!noAFRun) {
+            // If there is a "continuous picture" mode available, use it, otherwise default to AUTO.
+            int[] afModes = mCameraCharacteristics.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES);
+            if (contains(afModes, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)) {
+                builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
+            }
+            else {
+                builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_AUTO);
+            }
+        }
+
+        // If there is an auto-magical flash control mode available, use it, otherwise default to
+        // the "on" mode, which is guaranteed to always be available.
+        int[] aeModes = mCameraCharacteristics.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_MODES);
+        if (contains(aeModes, CaptureRequest.CONTROL_AE_MODE_ON_AUTO_FLASH)) {
+            builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON_AUTO_FLASH);
+        }
+        else {
+            builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON);
+        }
+
+//        builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON_ALWAYS_FLASH);
+//        builder.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_SINGLE);
+
+        // If there is an auto-magical white balance control mode available, use it.
+        int[] awbModes = mCameraCharacteristics.get(CameraCharacteristics.CONTROL_AWB_AVAILABLE_MODES);
+        if (contains(awbModes, CaptureRequest.CONTROL_AWB_MODE_AUTO)) {
+            // Allow AWB to run auto-magically if this device supports this
+            builder.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO);
         }
     }
 
@@ -355,19 +442,6 @@ class CameraController {
         }
     }
 
-    @NonNull
-    private static CaptureRequest.Builder createPreviewBuilder(CameraCaptureSession captureSession, Surface previewSurface) throws CameraAccessException {
-        CaptureRequest.Builder previewRequestBuilder = captureSession.getDevice().createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
-        previewRequestBuilder.addTarget(previewSurface);
-        // Auto focus should be continuous for camera preview.
-        previewRequestBuilder.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO);
-        previewRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
-        previewRequestBuilder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON_AUTO_FLASH);
-        previewRequestBuilder.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_OFF);
-        // Flash is automatically enabled when necessary.
-        return previewRequestBuilder;
-    }
-
     public static class State {
         String cameraId;
         Surface previewSurface;
@@ -376,6 +450,7 @@ class CameraController {
         ImageReader imageReader;
         CameraCaptureSession captureSession;
         SurfaceTexture surfaceTexture;
+        TotalCaptureResult result;
     }
 
     public interface Callback {
