@@ -84,6 +84,7 @@ public class CameraController {
 
         @Override
         public void onCreate(@Nullable Bundle saveState) {
+            Log.d(TAG, "\tonCreate");
             if (saveState != null) {
                 mCameraId = saveState.getString(SIS_CAMERA_ID);
             }
@@ -92,6 +93,7 @@ public class CameraController {
 
             try {
                 if (mCameraId == null) {
+                    Log.d(TAG, "\tchoosing default camera");
                     mCameraId = CameraStrategy.chooseDefaultCamera(cameraManager);
                 }
 
@@ -117,6 +119,8 @@ public class CameraController {
 
                 @Override
                 public void onSurfaceTextureSizeChanged(SurfaceTexture surface, int width, int height) {
+                    Log.d(TAG, "\tonSurfaceTextureSizeChanged");
+                    mOnSurfaceTextureAvailable.onNext(surface);
                     //NO-OP
                 }
 
@@ -135,7 +139,7 @@ public class CameraController {
 
         @Override
         public void onDestroy() {
-
+            Log.d(TAG, "\tonDestroy");
         }
 
         @Override
@@ -145,7 +149,7 @@ public class CameraController {
 
         @Override
         public void onStart() {
-
+            Log.d(TAG, "\tonStart");
         }
 
         @Override
@@ -176,7 +180,7 @@ public class CameraController {
 
         @Override
         public void onStop() {
-
+            Log.d(TAG, "\tonStop");
         }
 
         @Override
@@ -186,6 +190,7 @@ public class CameraController {
     };
 
     private void setupPreviewSize(CameraManager cameraManager) throws CameraAccessException {
+        Log.d(TAG, "\tsetupPreviewSize");
         mCameraCharacteristics = cameraManager.getCameraCharacteristics(mCameraId);
         mPreviewSize = CameraStrategy.getPreviewSize(mCameraCharacteristics);
         // We fit the aspect ratio of TextureView to the size of preview we picked.
@@ -206,6 +211,8 @@ public class CameraController {
 
         //this emits state with non-null camera device when camera is opened, and emits camera with null device when it's closed
         Observable<State> openCameraObservable = mOnSurfaceTextureAvailable.asObservable()
+            .first()
+            .doOnNext(o->Log.d(TAG, "\topenCameraObservable starting"))
             .flatMap(this::initState)
             .doOnNext(this::initImageReader)
             .flatMap(CameraRxWrapper::openCamera)
@@ -280,7 +287,7 @@ public class CameraController {
             mCameraId = CameraStrategy.switchCamera(state.cameraManager, mCameraId);
             setupPreviewSize(state.cameraManager);
             subscribe();
-            mOnSurfaceTextureAvailable.onNext(mTextureView.getSurfaceTexture());
+            //waiting for onSurfaceSizeChanged now
         }
         catch (CameraAccessException e) {
             onError(e);
