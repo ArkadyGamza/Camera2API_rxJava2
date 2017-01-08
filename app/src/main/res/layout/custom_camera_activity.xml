@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@android:color/holo_orange_dark">
@@ -31,5 +32,15 @@
         android:padding="32dp"
         android:src="@drawable/ic_camera_enhance_black_24dp"
         android:tint="@android:color/white" />
+
+    <ImageView
+        android:id="@+id/customCameraActivity_focusIndicator"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="center"
+        android:src="@drawable/ic_center_focus_weak_black_24dp"
+        android:tint="@android:color/white"
+        android:visibility="gone"
+        tools:visibility="visible" />
 
 </FrameLayout>

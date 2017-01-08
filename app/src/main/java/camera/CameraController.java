@@ -229,8 +229,10 @@ public class CameraController {
             .share();
 
         mSubscriptions.add(Observable.combineLatest(previewObservable, mOnShutterClick, (state, o) -> state)
+            .doOnNext(state -> mCallback.onFocusStarted())
             .flatMap(this::waitForAf)
             .flatMap(this::waitForAe)
+            .doOnNext(state -> mCallback.onFocusFinished())
             .flatMap(this::captureStillPicture)
             .subscribe(state -> {
             }, this::onError));
@@ -472,6 +474,10 @@ public class CameraController {
     }
 
     public interface Callback {
+        void onFocusStarted();
+
+        void onFocusFinished();
+
         void onPhotoTaken(@NonNull String photoUrl, @NonNull Integer photoSourceType);
 
         void onCameraAccessException();
