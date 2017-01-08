@@ -212,7 +212,7 @@ public class CameraController {
         //this emits state with non-null camera device when camera is opened, and emits camera with null device when it's closed
         Observable<State> openCameraObservable = mOnSurfaceTextureAvailable.asObservable()
             .first()
-            .doOnNext(o->Log.d(TAG, "\topenCameraObservable starting"))
+            .doOnNext(o -> Log.d(TAG, "\topenCameraObservable starting"))
             .flatMap(this::initState)
             .doOnNext(this::initImageReader)
             .flatMap(CameraRxWrapper::openCamera)
@@ -288,6 +288,8 @@ public class CameraController {
             setupPreviewSize(state.cameraManager);
             subscribe();
             //waiting for onSurfaceSizeChanged now
+            //give a chance for TextureView to be measured. For some reasons onSurfaceSizeChanged is not always called.
+            mTextureView.postDelayed(() -> mOnSurfaceTextureAvailable.onNext(mTextureView.getSurfaceTexture()), 500);
         }
         catch (CameraAccessException e) {
             onError(e);
