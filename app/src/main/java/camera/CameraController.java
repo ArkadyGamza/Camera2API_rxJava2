@@ -358,7 +358,7 @@ public class CameraController {
     @NonNull
     private CaptureRequest.Builder createStillPictureBuilder(State state) throws CameraAccessException {
         final CaptureRequest.Builder builder;
-        builder = state.cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_ZERO_SHUTTER_LAG);
+        builder = state.cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
         builder.set(CaptureRequest.CONTROL_CAPTURE_INTENT, CaptureRequest.CONTROL_CAPTURE_INTENT_STILL_CAPTURE);
         builder.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CameraMetadata.CONTROL_AE_PRECAPTURE_TRIGGER_IDLE);
         builder.addTarget(state.imageReader.getSurface());

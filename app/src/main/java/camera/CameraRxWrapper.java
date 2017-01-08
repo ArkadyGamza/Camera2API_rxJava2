@@ -61,14 +61,6 @@ public class CameraRxWrapper {
     private static CameraCaptureSession.CaptureCallback getSessionListener(final Subscriber<? super CaptureResult> subscriber) {
         return new CameraCaptureSession.CaptureCallback() {
             @Override
-            public void onCaptureProgressed(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull CaptureResult partialResult) {
-                super.onCaptureProgressed(session, request, partialResult);
-                if (!subscriber.isUnsubscribed()) {
-                    subscriber.onNext(partialResult);
-                }
-            }
-
-            @Override
             public void onCaptureCompleted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
                 super.onCaptureCompleted(session, request, result);
                 if (!subscriber.isUnsubscribed()) {
@@ -84,21 +76,6 @@ public class CameraRxWrapper {
                 }
             }
 
-            @Override
-            public void onCaptureSequenceCompleted(@NonNull CameraCaptureSession session, int sequenceId, long frameNumber) {
-                super.onCaptureSequenceCompleted(session, sequenceId, frameNumber);
-                if (!subscriber.isUnsubscribed()) {
-                    subscriber.onCompleted();
-                }
-            }
-
-            @Override
-            public void onCaptureSequenceAborted(@NonNull CameraCaptureSession session, int sequenceId) {
-                super.onCaptureSequenceAborted(session, sequenceId);
-                if (!subscriber.isUnsubscribed()) {
-                    subscriber.onCompleted();
-                }
-            }
         };
     }
 
@@ -303,7 +280,7 @@ public class CameraRxWrapper {
         }
 
         private int hasProgressed = 0;
-        private static final int PROGRESSED_LIMIT = 3;
+        private static final int PROGRESSED_LIMIT = 30;
         private int hasCompleted = 0;
 
         @Override

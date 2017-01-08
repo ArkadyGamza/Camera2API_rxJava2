@@ -43,7 +43,7 @@ class AeHelper {
     private static boolean checkResultAeState(CaptureResult result) {
         Integer aeState = result.get(CaptureResult.CONTROL_AE_STATE);
         if (aeState == null) {
-            return false;
+            return true;
         }
 
         return aeState == CaptureResult.CONTROL_AE_STATE_INACTIVE

@@ -44,10 +44,11 @@ class AfHelper {
     private static boolean checkResultAfState(CaptureResult result) {
         Integer afState = result.get(CaptureResult.CONTROL_AF_STATE);
         if (afState == null) {
-            return false;
+            return true;
         }
         return afState == CaptureResult.CONTROL_AF_STATE_INACTIVE
             || afState == CaptureResult.CONTROL_AF_STATE_FOCUSED_LOCKED
+            || afState == CaptureResult.CONTROL_AF_STATE_PASSIVE_FOCUSED
             || afState == CaptureResult.CONTROL_AF_STATE_NOT_FOCUSED_LOCKED;
     }
 }
