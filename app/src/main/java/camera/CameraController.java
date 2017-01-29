@@ -247,7 +247,7 @@ public class CameraController {
             .first()
             .flatMap(this::initState)
             .doOnNext(this::initImageReader)
-            .flatMap(state -> CameraRxWrapper.openCamera(mCameraManager, state))
+            .flatMap(state -> CameraRxWrapper.openCamera(mCameraParams.cameraId, mCameraManager, state))
             .share();
 
         Observable<State> openSessionObservable = openCameraObservable
@@ -310,8 +310,6 @@ public class CameraController {
         state.surfaceTexture = surfaceTexture;
         surfaceTexture.setDefaultBufferSize(mCameraParams.previewSize.getWidth(), mCameraParams.previewSize.getHeight());
         state.previewSurface = new Surface(surfaceTexture);
-        state.cameraId = mCameraParams.cameraId;
-
         return Observable.just(state);
     }
 
@@ -492,7 +490,6 @@ public class CameraController {
     }
 
     public static class State {
-        String cameraId;
         Surface previewSurface;
         CameraDevice cameraDevice;
         ImageReader imageReader;

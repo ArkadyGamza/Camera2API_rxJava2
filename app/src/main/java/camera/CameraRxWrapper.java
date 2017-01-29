@@ -118,11 +118,11 @@ public class CameraRxWrapper {
         });
     }
 
-    public static Observable<CameraController.State> openCamera(@NonNull CameraManager cameraManager, @NonNull CameraController.State state) {
+    public static Observable<CameraController.State> openCamera(@NonNull String cameraId, @NonNull CameraManager cameraManager, @NonNull CameraController.State state) {
         return Observable.create(subscriber -> {
             try {
                 Log.d(TAG, "\topenCamera");
-                cameraManager.openCamera(state.cameraId, new CameraDevice.StateCallback() {
+                cameraManager.openCamera(cameraId, new CameraDevice.StateCallback() {
                     @Override
                     public void onOpened(@NonNull CameraDevice camera) {
                         Log.d(TAG, "\topenCamera - onOpened");
