@@ -9,6 +9,7 @@ import android.hardware.camera2.CaptureFailure;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.TotalCaptureResult;
+import android.media.ImageReader;
 import android.support.annotation.NonNull;
 import android.util.Log;
 import android.view.Surface;
@@ -77,11 +78,11 @@ public class CameraRxWrapper {
     }
 
     @NonNull
-    public static Observable<CameraController.State> createCaptureSession(@NonNull CameraController.State state, @NonNull Surface previewSurface) {
+    public static Observable<CameraController.State> createCaptureSession(@NonNull ImageReader imageReader, @NonNull CameraController.State state, @NonNull Surface previewSurface) {
         return Observable.create(subscriber -> {
             try {
                 Log.d(TAG, "\tcreateCaptureSession");
-                List<Surface> outputs = Arrays.asList(previewSurface, state.imageReader.getSurface());
+                List<Surface> outputs = Arrays.asList(previewSurface, imageReader.getSurface());
                 state.cameraDevice.createCaptureSession(outputs, new CameraCaptureSession.StateCallback() {
                     @Override
                     public void onConfigured(@NonNull CameraCaptureSession session) {
@@ -124,16 +125,16 @@ public class CameraRxWrapper {
                 Log.d(TAG, "\topenCamera");
                 cameraManager.openCamera(cameraId, new CameraDevice.StateCallback() {
                     @Override
-                    public void onOpened(@NonNull CameraDevice camera) {
+                    public void onOpened(@NonNull CameraDevice cameraDevice) {
                         Log.d(TAG, "\topenCamera - onOpened");
-                        state.cameraDevice = camera;
+                        state.cameraDevice = cameraDevice;
                         if (!subscriber.isUnsubscribed()) {
                             subscriber.onNext(state);
                         }
                     }
 
                     @Override
-                    public void onClosed(@NonNull CameraDevice camera) {
+                    public void onClosed(@NonNull CameraDevice cameraDevice) {
                         Log.d(TAG, "\topenCamera - onClosed");
                         state.cameraDevice = null;
                         if (!subscriber.isUnsubscribed()) {

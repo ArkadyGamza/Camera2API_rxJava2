@@ -51,6 +51,7 @@ public class CameraController {
     @NonNull
     private final CameraManager mCameraManager;
     private SurfaceParams mSurfaceParams;
+    private ImageReader mImageReader;
 
     private class CameraParams {
         @NonNull
@@ -256,14 +257,14 @@ public class CameraController {
         Observable<State> openCameraObservable = mOnSurfaceTextureAvailable.asObservable()
             .first()
             .doOnNext(this::setupSurface)
-            .map(s-> new State())
-            .doOnNext(this::initImageReader)
+            .map(s -> new State())
+            .doOnNext(s -> initImageReader())
             .flatMap(state -> CameraRxWrapper.openCamera(mCameraParams.cameraId, mCameraManager, state))
             .share();
 
         Observable<State> openSessionObservable = openCameraObservable
             .filter(state -> state.cameraDevice != null)
-            .flatMap((state3) -> CameraRxWrapper.createCaptureSession(state3, mSurfaceParams.previewSurface))
+            .flatMap((state3) -> CameraRxWrapper.createCaptureSession(mImageReader, state3, mSurfaceParams.previewSurface))
             .share();
 
         Observable<State> previewObservable = openSessionObservable
@@ -314,7 +315,7 @@ public class CameraController {
         mSubscriptions.clear();
     }
 
-    private void setupSurface(@NonNull SurfaceTexture surfaceTexture){
+    private void setupSurface(@NonNull SurfaceTexture surfaceTexture) {
         surfaceTexture.setDefaultBufferSize(mCameraParams.previewSize.getWidth(), mCameraParams.previewSize.getHeight());
         Surface previewSurface = new Surface(surfaceTexture);
         mSurfaceParams = new SurfaceParams(previewSurface);
@@ -335,13 +336,13 @@ public class CameraController {
         }
     }
 
-    private void initImageReader(@NonNull State state) {
+    private void initImageReader() {
         Log.d(TAG, "\tinitImageReader");
         Size sizeForImageReader = CameraStrategy.getStillImageSize(mCameraParams.cameraCharacteristics, mCameraParams.previewSize);
-        state.imageReader = ImageReader.newInstance(sizeForImageReader.getWidth(), sizeForImageReader.getHeight(), ImageFormat.JPEG, 1);
-        mSubscriptions.add(ImageSaverRxWrapper.createOnImageAvailableObservable(state.imageReader)
+        mImageReader = ImageReader.newInstance(sizeForImageReader.getWidth(), sizeForImageReader.getHeight(), ImageFormat.JPEG, 1);
+        mSubscriptions.add(ImageSaverRxWrapper.createOnImageAvailableObservable(mImageReader)
             .observeOn(Schedulers.io())
-            .flatMap(imageReader -> ImageSaverRxWrapper.save(imageReader.acquireLatestImage(), mFile).toObservable())
+            .flatMap(imageReader1 -> ImageSaverRxWrapper.save(imageReader1.acquireLatestImage(), mFile).toObservable())
             .observeOn(AndroidSchedulers.mainThread())
             .subscribe(file -> mCallback.onPhotoTaken(file.getAbsolutePath(), getLensFacingPhotoType())));
     }
@@ -418,7 +419,7 @@ public class CameraController {
         builder = state.cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
         builder.set(CaptureRequest.CONTROL_CAPTURE_INTENT, CaptureRequest.CONTROL_CAPTURE_INTENT_STILL_CAPTURE);
         builder.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CameraMetadata.CONTROL_AE_PRECAPTURE_TRIGGER_IDLE);
-        builder.addTarget(state.imageReader.getSurface());
+        builder.addTarget(mImageReader.getSurface());
         setup3Auto(builder);
 
         int rotation = mWindowManager.getDefaultDisplay().getRotation();
@@ -490,15 +491,14 @@ public class CameraController {
 
     private void closeImageReader(@NonNull State state) {
         Log.d(TAG, "\tcloseImageReader");
-        if (state.imageReader != null) {
-            state.imageReader.close();
-            state.imageReader = null;
+        if (mImageReader != null) {
+            mImageReader.close();
+            mImageReader = null;
         }
     }
 
     public static class State {
         CameraDevice cameraDevice;
-        ImageReader imageReader;
         CameraCaptureSession captureSession;
     }
 
