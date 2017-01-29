@@ -50,6 +50,7 @@ public class CameraController {
     private final WindowManager mWindowManager;
     @NonNull
     private final CameraManager mCameraManager;
+    private SurfaceParams mSurfaceParams;
 
     private class CameraParams {
         @NonNull
@@ -63,6 +64,15 @@ public class CameraController {
             this.cameraId = cameraId;
             this.cameraCharacteristics = cameraCharacteristics;
             this.previewSize = previewSize;
+        }
+    }
+
+    private class SurfaceParams {
+        @NonNull
+        private final Surface previewSurface;
+
+        private SurfaceParams(@NonNull Surface previewSurface) {
+            this.previewSurface = previewSurface;
         }
     }
 
@@ -245,14 +255,15 @@ public class CameraController {
         //this emits state with non-null camera device when camera is opened, and emits camera with null device when it's closed
         Observable<State> openCameraObservable = mOnSurfaceTextureAvailable.asObservable()
             .first()
-            .flatMap(this::initState)
+            .doOnNext(this::setupSurface)
+            .map(s-> new State())
             .doOnNext(this::initImageReader)
             .flatMap(state -> CameraRxWrapper.openCamera(mCameraParams.cameraId, mCameraManager, state))
             .share();
 
         Observable<State> openSessionObservable = openCameraObservable
             .filter(state -> state.cameraDevice != null)
-            .flatMap(CameraRxWrapper::createCaptureSession)
+            .flatMap((state3) -> CameraRxWrapper.createCaptureSession(state3, mSurfaceParams.previewSurface))
             .share();
 
         Observable<State> previewObservable = openSessionObservable
@@ -303,14 +314,10 @@ public class CameraController {
         mSubscriptions.clear();
     }
 
-    @NonNull
-    private Observable<State> initState(@NonNull SurfaceTexture surfaceTexture) {
-        Log.d(TAG, "\tinitState");
-        State state = new State();
-        state.surfaceTexture = surfaceTexture;
+    private void setupSurface(@NonNull SurfaceTexture surfaceTexture){
         surfaceTexture.setDefaultBufferSize(mCameraParams.previewSize.getWidth(), mCameraParams.previewSize.getHeight());
-        state.previewSurface = new Surface(surfaceTexture);
-        return Observable.just(state);
+        Surface previewSurface = new Surface(surfaceTexture);
+        mSurfaceParams = new SurfaceParams(previewSurface);
     }
 
     private void switchCameraInternal(@NonNull State state) {
@@ -349,7 +356,7 @@ public class CameraController {
         Log.d(TAG, "\tstartPreview");
         try {
             return CameraRxWrapper
-                .fromSetRepeatingRequest(state.captureSession, createPreviewBuilder(state.captureSession, state.previewSurface).build())
+                .fromSetRepeatingRequest(state.captureSession, createPreviewBuilder(state.captureSession, mSurfaceParams.previewSurface).build())
                 .map(result -> state);
         }
         catch (CameraAccessException e) {
@@ -372,7 +379,7 @@ public class CameraController {
     private Observable<CameraController.State> waitForAf(CameraController.State state) {
         try {
             return mAutoFocusConvergeWaiter
-                .waitForConverge(state, createPreviewBuilder(state.captureSession, state.previewSurface))
+                .waitForConverge(state, createPreviewBuilder(state.captureSession, mSurfaceParams.previewSurface))
                 .toObservable();
         }
         catch (CameraAccessException e) {
@@ -384,7 +391,7 @@ public class CameraController {
     private Observable<State> waitForAe(State state) {
         try {
             return mAutoExposureConvergeWaiter
-                .waitForConverge(state, createPreviewBuilder(state.captureSession, state.previewSurface))
+                .waitForConverge(state, createPreviewBuilder(state.captureSession, mSurfaceParams.previewSurface))
                 .toObservable();
         }
         catch (CameraAccessException e) {
@@ -490,11 +497,9 @@ public class CameraController {
     }
 
     public static class State {
-        Surface previewSurface;
         CameraDevice cameraDevice;
         ImageReader imageReader;
         CameraCaptureSession captureSession;
-        SurfaceTexture surfaceTexture;
     }
 
     public interface Callback {

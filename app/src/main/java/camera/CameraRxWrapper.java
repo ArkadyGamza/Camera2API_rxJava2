@@ -77,11 +77,11 @@ public class CameraRxWrapper {
     }
 
     @NonNull
-    public static Observable<CameraController.State> createCaptureSession(@NonNull CameraController.State state) {
+    public static Observable<CameraController.State> createCaptureSession(@NonNull CameraController.State state, @NonNull Surface previewSurface) {
         return Observable.create(subscriber -> {
             try {
                 Log.d(TAG, "\tcreateCaptureSession");
-                List<Surface> outputs = Arrays.asList(state.previewSurface, state.imageReader.getSurface());
+                List<Surface> outputs = Arrays.asList(previewSurface, state.imageReader.getSurface());
                 state.cameraDevice.createCaptureSession(outputs, new CameraCaptureSession.StateCallback() {
                     @Override
                     public void onConfigured(@NonNull CameraCaptureSession session) {
