@@ -22,6 +22,7 @@ import android.util.Log;
 import android.util.Size;
 import android.view.Surface;
 import android.view.TextureView;
+import android.view.View;
 import android.view.WindowManager;
 
 import java.io.File;
@@ -135,6 +136,14 @@ public class CameraController {
                 }
             });
 
+            // For some reasons onSurfaceSizeChanged is not always called, this is a workaround
+            mTextureView.addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+                Log.d(TAG, "\tonLayoutChange");
+                if (mTextureView.isAvailable()) {
+                    Log.d(TAG, "\tmTextureView.isAvailable()");
+                    mOnSurfaceTextureAvailable.onNext(mTextureView.getSurfaceTexture());
+                }
+            });
         }
 
         @Override
@@ -226,6 +235,7 @@ public class CameraController {
         Observable<State> previewObservable = openSessionObservable
             .filter(state -> state.captureSession != null)
             .flatMap(state -> startPreview(state).first())
+            .doOnNext(state -> mTextureView.setVisibility(View.VISIBLE))
             .share();
 
         mSubscriptions.add(Observable.combineLatest(previewObservable, mOnShutterClick, (state, o) -> state)
@@ -238,6 +248,7 @@ public class CameraController {
             }, this::onError));
 
         mSubscriptions.add(Observable.combineLatest(previewObservable, mOnSwitchCamera.first(), (state, o) -> state)
+            .doOnNext(state -> mTextureView.setVisibility(View.INVISIBLE))
             .doOnNext(this::closeSession)
             .flatMap(state -> openSessionObservable.filter(state1 -> state1.captureSession == null))
             .doOnNext(this::closeCamera)
@@ -289,9 +300,7 @@ public class CameraController {
             mCameraId = CameraStrategy.switchCamera(state.cameraManager, mCameraId);
             setupPreviewSize(state.cameraManager);
             subscribe();
-            //waiting for onSurfaceSizeChanged now
-            //give a chance for TextureView to be measured. For some reasons onSurfaceSizeChanged is not always called.
-            mTextureView.postDelayed(() -> mOnSurfaceTextureAvailable.onNext(mTextureView.getSurfaceTexture()), 500);
+            // waiting for textureView to be measured
         }
         catch (CameraAccessException e) {
             onError(e);
