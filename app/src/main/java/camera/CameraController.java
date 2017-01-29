@@ -51,9 +51,20 @@ public class CameraController {
     @NonNull
     private final CameraManager mCameraManager;
 
-    private String mCameraId;
-    private CameraCharacteristics mCameraCharacteristics;
-    private Size mPreviewSize;
+    private class CameraParams {
+        @NonNull
+        private final String cameraId;
+        @NonNull
+        private final CameraCharacteristics cameraCharacteristics;
+        @NonNull
+        private final Size previewSize;
+
+        private CameraParams(@NonNull String cameraId, @NonNull CameraCharacteristics cameraCharacteristics, @NonNull Size previewSize) {
+            this.cameraId = cameraId;
+            this.cameraCharacteristics = cameraCharacteristics;
+            this.previewSize = previewSize;
+        }
+    }
 
     private final CompositeSubscription mSubscriptions = new CompositeSubscription();
     private final PublishSubject<Object> mOnPauseSubject = PublishSubject.create();
@@ -88,29 +99,31 @@ public class CameraController {
         return mLifecycleImpl;
     }
 
+    private CameraParams mCameraParams;
     private final AndroidLifecycle mLifecycleImpl = new AndroidLifecycle() {
         private static final String SIS_CAMERA_ID = "SIS_CAMERA_ID";
 
         @Override
         public void onCreate(@Nullable Bundle saveState) {
             Log.d(TAG, "\tonCreate");
+            String cameraId = null;
             if (saveState != null) {
-                mCameraId = saveState.getString(SIS_CAMERA_ID);
+                cameraId = saveState.getString(SIS_CAMERA_ID);
             }
 
-
             try {
-                if (mCameraId == null) {
+                if (cameraId == null) {
                     Log.d(TAG, "\tchoosing default camera");
-                    mCameraId = CameraStrategy.chooseDefaultCamera(mCameraManager);
+                    cameraId = CameraStrategy.chooseDefaultCamera(mCameraManager);
                 }
 
-                if (mCameraId == null) {
+                if (cameraId == null) {
                     mCallback.onException(new IllegalStateException("Can't find any camera"));
                     return;
                 }
 
-                setupPreviewSize();
+                mCameraParams = getCameraParams(cameraId);
+                setTextureAspectRatio(mCameraParams);
             }
             catch (CameraAccessException e) {
                 mCallback.onException(e);
@@ -160,7 +173,7 @@ public class CameraController {
 
         @Override
         public void onSaveInstanceState(@NonNull Bundle outState) {
-            outState.putString(SIS_CAMERA_ID, mCameraId);
+            outState.putString(SIS_CAMERA_ID, mCameraParams.cameraId);
         }
 
         @Override
@@ -205,17 +218,21 @@ public class CameraController {
         }
     };
 
-    private void setupPreviewSize() throws CameraAccessException {
+    private CameraParams getCameraParams(@NonNull String cameraId) throws CameraAccessException {
         Log.d(TAG, "\tsetupPreviewSize");
-        mCameraCharacteristics = mCameraManager.getCameraCharacteristics(mCameraId);
-        mPreviewSize = CameraStrategy.getPreviewSize(mCameraCharacteristics);
+        CameraCharacteristics cameraCharacteristics = mCameraManager.getCameraCharacteristics(cameraId);
+        Size previewSize = CameraStrategy.getPreviewSize(cameraCharacteristics);
+        return new CameraParams(cameraId, cameraCharacteristics, previewSize);
+    }
+
+    private void setTextureAspectRatio(@NonNull CameraParams cameraParams) {
         // We fit the aspect ratio of TextureView to the size of preview we picked.
         // looks like the dimensions we get from camera characteristics are for Landscape layout, so we swap it for portrait
         if (mLayoutOrientation == Configuration.ORIENTATION_LANDSCAPE) {
-            mTextureView.setAspectRatio(mPreviewSize.getWidth(), mPreviewSize.getHeight());
+            mTextureView.setAspectRatio(cameraParams.previewSize.getWidth(), cameraParams.previewSize.getHeight());
         }
         else {
-            mTextureView.setAspectRatio(mPreviewSize.getHeight(), mPreviewSize.getWidth());
+            mTextureView.setAspectRatio(cameraParams.previewSize.getHeight(), cameraParams.previewSize.getWidth());
         }
     }
 
@@ -291,9 +308,9 @@ public class CameraController {
         Log.d(TAG, "\tinitState");
         State state = new State();
         state.surfaceTexture = surfaceTexture;
-        surfaceTexture.setDefaultBufferSize(mPreviewSize.getWidth(), mPreviewSize.getHeight());
+        surfaceTexture.setDefaultBufferSize(mCameraParams.previewSize.getWidth(), mCameraParams.previewSize.getHeight());
         state.previewSurface = new Surface(surfaceTexture);
-        state.cameraId = mCameraId;
+        state.cameraId = mCameraParams.cameraId;
 
         return Observable.just(state);
     }
@@ -302,8 +319,9 @@ public class CameraController {
         Log.d(TAG, "\tswitchCameraInternal");
         try {
             unsubscribe();
-            mCameraId = CameraStrategy.switchCamera(mCameraManager, mCameraId);
-            setupPreviewSize();
+            String cameraId = CameraStrategy.switchCamera(mCameraManager, mCameraParams.cameraId);
+            mCameraParams = getCameraParams(cameraId);
+            setTextureAspectRatio(mCameraParams);
             subscribe();
             // waiting for textureView to be measured
         }
@@ -314,7 +332,7 @@ public class CameraController {
 
     private void initImageReader(@NonNull State state) {
         Log.d(TAG, "\tinitImageReader");
-        Size sizeForImageReader = CameraStrategy.getStillImageSize(mCameraCharacteristics, mPreviewSize);
+        Size sizeForImageReader = CameraStrategy.getStillImageSize(mCameraParams.cameraCharacteristics, mCameraParams.previewSize);
         state.imageReader = ImageReader.newInstance(sizeForImageReader.getWidth(), sizeForImageReader.getHeight(), ImageFormat.JPEG, 1);
         mSubscriptions.add(ImageSaverRxWrapper.createOnImageAvailableObservable(state.imageReader)
             .observeOn(Schedulers.io())
@@ -323,9 +341,9 @@ public class CameraController {
             .subscribe(file -> mCallback.onPhotoTaken(file.getAbsolutePath(), getLensFacingPhotoType())));
     }
 
-    @NonNull
+    @Nullable
     private Integer getLensFacingPhotoType() {
-        return mCameraCharacteristics.get(CameraCharacteristics.LENS_FACING);
+        return mCameraParams.cameraCharacteristics.get(CameraCharacteristics.LENS_FACING);
     }
 
     @NonNull
@@ -399,7 +417,7 @@ public class CameraController {
         setup3Auto(builder);
 
         int rotation = mWindowManager.getDefaultDisplay().getRotation();
-        builder.set(CaptureRequest.JPEG_ORIENTATION, CameraOrientationHelper.getJpegOrientation(mCameraCharacteristics, rotation));
+        builder.set(CaptureRequest.JPEG_ORIENTATION, CameraOrientationHelper.getJpegOrientation(mCameraParams.cameraCharacteristics, rotation));
         return builder;
     }
 
@@ -415,14 +433,14 @@ public class CameraController {
         // Enable auto-magical 3A run by camera device
         builder.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO);
 
-        Float minFocusDist = mCameraCharacteristics.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE);
+        Float minFocusDist = mCameraParams.cameraCharacteristics.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE);
 
         // If MINIMUM_FOCUS_DISTANCE is 0, lens is fixed-focus and we need to skip the AF run.
         boolean noAFRun = (minFocusDist == null || minFocusDist == 0);
 
         if (!noAFRun) {
             // If there is a "continuous picture" mode available, use it, otherwise default to AUTO.
-            int[] afModes = mCameraCharacteristics.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES);
+            int[] afModes = mCameraParams.cameraCharacteristics.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES);
             if (contains(afModes, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)) {
                 builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
             }
@@ -433,7 +451,7 @@ public class CameraController {
 
         // If there is an auto-magical flash control mode available, use it, otherwise default to
         // the "on" mode, which is guaranteed to always be available.
-        int[] aeModes = mCameraCharacteristics.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_MODES);
+        int[] aeModes = mCameraParams.cameraCharacteristics.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_MODES);
         if (contains(aeModes, CaptureRequest.CONTROL_AE_MODE_ON_AUTO_FLASH)) {
             builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON_AUTO_FLASH);
         }
@@ -442,7 +460,7 @@ public class CameraController {
         }
 
         // If there is an auto-magical white balance control mode available, use it.
-        int[] awbModes = mCameraCharacteristics.get(CameraCharacteristics.CONTROL_AWB_AVAILABLE_MODES);
+        int[] awbModes = mCameraParams.cameraCharacteristics.get(CameraCharacteristics.CONTROL_AWB_AVAILABLE_MODES);
         if (contains(awbModes, CaptureRequest.CONTROL_AWB_MODE_AUTO)) {
             // Allow AWB to run auto-magically if this device supports this
             builder.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO);
@@ -487,7 +505,7 @@ public class CameraController {
 
         void onFocusFinished();
 
-        void onPhotoTaken(@NonNull String photoUrl, @NonNull Integer photoSourceType);
+        void onPhotoTaken(@NonNull String photoUrl, @Nullable Integer photoSourceType);
 
         void onCameraAccessException();
 
