@@ -13,7 +13,6 @@ import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CameraMetadata;
 import android.hardware.camera2.CaptureRequest;
-import android.hardware.camera2.TotalCaptureResult;
 import android.media.ImageReader;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
@@ -39,12 +38,19 @@ public class CameraController {
     static final String TAG = CameraController.class.getName();
 
     @NonNull
-    private final Callback mCallback;
     private final Context mContext;
-    private final WindowManager mWindowManager;
+    @NonNull
+    private final Callback mCallback;
     private final int mLayoutOrientation;
-    private File mFile;
-    private AutoFitTextureView mTextureView;
+    @NonNull
+    private final File mFile;
+    @NonNull
+    private final AutoFitTextureView mTextureView;
+    @NonNull
+    private final WindowManager mWindowManager;
+    @NonNull
+    private final CameraManager mCameraManager;
+
     private String mCameraId;
     private CameraCharacteristics mCameraCharacteristics;
     private Size mPreviewSize;
@@ -58,14 +64,16 @@ public class CameraController {
     private final ConvergeWaiter mAutoExposureConvergeWaiter = ConvergeWaiter.Factory.createAutoExposureConvergeWaiter();
 
 
-    public CameraController(Context context, @NonNull Callback callback, @NonNull String photoFileUrl,
+    public CameraController(@NonNull Context context, @NonNull Callback callback, @NonNull String photoFileUrl,
                             @NonNull AutoFitTextureView textureView, int layoutOrientation) {
         mContext = context;
         mCallback = callback;
-        mLayoutOrientation = layoutOrientation;
-        mWindowManager = (WindowManager) mContext.getSystemService(Context.WINDOW_SERVICE);
         mFile = new File(photoFileUrl);
         mTextureView = textureView;
+        mLayoutOrientation = layoutOrientation;
+        mWindowManager = (WindowManager) mContext.getSystemService(Context.WINDOW_SERVICE);
+        mCameraManager = (CameraManager) mContext.getSystemService(Context.CAMERA_SERVICE);
+
     }
 
     public void takePhoto() {
@@ -76,11 +84,11 @@ public class CameraController {
         mOnSwitchCamera.onNext(null);
     }
 
-    public PresenterLifecycle getLifecycle() {
+    public AndroidLifecycle getLifecycle() {
         return mLifecycleImpl;
     }
 
-    private final PresenterLifecycle mLifecycleImpl = new PresenterLifecycle() {
+    private final AndroidLifecycle mLifecycleImpl = new AndroidLifecycle() {
         private static final String SIS_CAMERA_ID = "SIS_CAMERA_ID";
 
         @Override
@@ -90,12 +98,11 @@ public class CameraController {
                 mCameraId = saveState.getString(SIS_CAMERA_ID);
             }
 
-            CameraManager cameraManager = (CameraManager) mContext.getSystemService(Context.CAMERA_SERVICE);
 
             try {
                 if (mCameraId == null) {
                     Log.d(TAG, "\tchoosing default camera");
-                    mCameraId = CameraStrategy.chooseDefaultCamera(cameraManager);
+                    mCameraId = CameraStrategy.chooseDefaultCamera(mCameraManager);
                 }
 
                 if (mCameraId == null) {
@@ -103,7 +110,7 @@ public class CameraController {
                     return;
                 }
 
-                setupPreviewSize(cameraManager);
+                setupPreviewSize();
             }
             catch (CameraAccessException e) {
                 mCallback.onException(e);
@@ -198,9 +205,9 @@ public class CameraController {
         }
     };
 
-    private void setupPreviewSize(CameraManager cameraManager) throws CameraAccessException {
+    private void setupPreviewSize() throws CameraAccessException {
         Log.d(TAG, "\tsetupPreviewSize");
-        mCameraCharacteristics = cameraManager.getCameraCharacteristics(mCameraId);
+        mCameraCharacteristics = mCameraManager.getCameraCharacteristics(mCameraId);
         mPreviewSize = CameraStrategy.getPreviewSize(mCameraCharacteristics);
         // We fit the aspect ratio of TextureView to the size of preview we picked.
         // looks like the dimensions we get from camera characteristics are for Landscape layout, so we swap it for portrait
@@ -221,10 +228,9 @@ public class CameraController {
         //this emits state with non-null camera device when camera is opened, and emits camera with null device when it's closed
         Observable<State> openCameraObservable = mOnSurfaceTextureAvailable.asObservable()
             .first()
-            .doOnNext(o -> Log.d(TAG, "\topenCameraObservable starting"))
             .flatMap(this::initState)
             .doOnNext(this::initImageReader)
-            .flatMap(CameraRxWrapper::openCamera)
+            .flatMap(state -> CameraRxWrapper.openCamera(mCameraManager, state))
             .share();
 
         Observable<State> openSessionObservable = openCameraObservable
@@ -287,7 +293,6 @@ public class CameraController {
         state.surfaceTexture = surfaceTexture;
         surfaceTexture.setDefaultBufferSize(mPreviewSize.getWidth(), mPreviewSize.getHeight());
         state.previewSurface = new Surface(surfaceTexture);
-        state.cameraManager = (CameraManager) mContext.getSystemService(Context.CAMERA_SERVICE);
         state.cameraId = mCameraId;
 
         return Observable.just(state);
@@ -297,8 +302,8 @@ public class CameraController {
         Log.d(TAG, "\tswitchCameraInternal");
         try {
             unsubscribe();
-            mCameraId = CameraStrategy.switchCamera(state.cameraManager, mCameraId);
-            setupPreviewSize(state.cameraManager);
+            mCameraId = CameraStrategy.switchCamera(mCameraManager, mCameraId);
+            setupPreviewSize();
             subscribe();
             // waiting for textureView to be measured
         }
@@ -436,9 +441,6 @@ public class CameraController {
             builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON);
         }
 
-//        builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON_ALWAYS_FLASH);
-//        builder.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_SINGLE);
-
         // If there is an auto-magical white balance control mode available, use it.
         int[] awbModes = mCameraCharacteristics.get(CameraCharacteristics.CONTROL_AWB_AVAILABLE_MODES);
         if (contains(awbModes, CaptureRequest.CONTROL_AWB_MODE_AUTO)) {
@@ -475,11 +477,9 @@ public class CameraController {
         String cameraId;
         Surface previewSurface;
         CameraDevice cameraDevice;
-        CameraManager cameraManager;
         ImageReader imageReader;
         CameraCaptureSession captureSession;
         SurfaceTexture surfaceTexture;
-        TotalCaptureResult result;
     }
 
     public interface Callback {
