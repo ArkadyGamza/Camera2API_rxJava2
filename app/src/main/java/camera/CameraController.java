@@ -27,6 +27,7 @@ import android.view.WindowManager;
 import java.io.File;
 
 import rx.Observable;
+import rx.Single;
 import rx.android.schedulers.AndroidSchedulers;
 import rx.schedulers.Schedulers;
 import rx.subjects.PublishSubject;
@@ -271,17 +272,18 @@ public class CameraController {
             .share();
 
         //todo change to single
-        Observable<CaptureResultParams> previewObservable = cameraCaptureSessionObservable
+        Single<CaptureResultParams> previewObservable = cameraCaptureSessionObservable
             .filter(cameraCaptureSessionParams -> cameraCaptureSessionParams.cameraCaptureSession != null)
             .flatMap(cameraCaptureSessionParams -> startPreview(cameraCaptureSessionParams).first())
             .doOnNext(state -> mTextureView.setVisibility(View.VISIBLE))
+            .toSingle()
             .share();
 
         mSubscriptions.add(Observable.combineLatest(previewObservable, mOnShutterClick, (captureResultParams, o) -> captureResultParams)
-//            .doOnNext(state -> mCallback.onFocusStarted())
-//            .flatMap(this::waitForAf)
-//            .flatMap(this::waitForAe)
-//            .doOnNext(state -> mCallback.onFocusFinished())
+            .doOnNext(state -> mCallback.onFocusStarted())
+            .flatMap(this::waitForAf)
+            .flatMap(this::waitForAe)
+            .doOnNext(state -> mCallback.onFocusFinished())
             .flatMap(captureResultParams -> captureStillPicture(captureResultParams.mCameraCaptureSessionParams))
             .subscribe(state -> {
             }, this::onError));
@@ -394,10 +396,11 @@ public class CameraController {
         return false;
     }
 
-    private Observable<CameraController.State> waitForAf(CameraController.State state) {
+    private Observable<CaptureResultParams> waitForAf(@NonNull CaptureResultParams captureResultParams) {
         try {
+            CaptureRequest.Builder previewBuilder = createPreviewBuilder(captureResultParams.mCameraCaptureSessionParams.cameraCaptureSession, mSurfaceParams.previewSurface);
             return mAutoFocusConvergeWaiter
-                .waitForConverge(state, createPreviewBuilder(state.captureSession, mSurfaceParams.previewSurface))
+                .waitForConverge(captureResultParams, previewBuilder)
                 .toObservable();
         }
         catch (CameraAccessException e) {
@@ -406,10 +409,11 @@ public class CameraController {
     }
 
     @NonNull
-    private Observable<State> waitForAe(State state) {
+    private Observable<CaptureResultParams> waitForAe(@NonNull CaptureResultParams captureResultParams) {
         try {
+            CaptureRequest.Builder previewBuilder = createPreviewBuilder(captureResultParams.mCameraCaptureSessionParams.cameraCaptureSession, mSurfaceParams.previewSurface);
             return mAutoExposureConvergeWaiter
-                .waitForConverge(state, createPreviewBuilder(state.captureSession, mSurfaceParams.previewSurface))
+                .waitForConverge(captureResultParams, previewBuilder)
                 .toObservable();
         }
         catch (CameraAccessException e) {
@@ -510,10 +514,6 @@ public class CameraController {
             mImageReader.close();
             mImageReader = null;
         }
-    }
-
-    public static class State {
-        CameraCaptureSession captureSession;
     }
 
     public interface Callback {

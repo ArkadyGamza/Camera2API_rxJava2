@@ -38,22 +38,22 @@ class ConvergeWaiter {
     }
 
     @NonNull
-    Single<CameraController.State> waitForConverge(@NonNull CameraController.State state, @NonNull CaptureRequest.Builder builder) {
+    Single<CaptureResultParams> waitForConverge(@NonNull CaptureResultParams captureResultParams, @NonNull CaptureRequest.Builder builder) {
         CaptureRequest previewRequest = builder.build();
 
         builder.set(mRequestTriggerKey, mRequestTriggerStartValue);
         CaptureRequest triggerRequest = builder.build();
 
-        Observable<CaptureResult> triggerObservable = CameraRxWrapper.fromCapture(state.captureSession, triggerRequest);
-        Observable<CaptureResult> previewObservable = CameraRxWrapper.fromSetRepeatingRequest(state.captureSession, previewRequest);
+        Observable<CaptureResult> triggerObservable = CameraRxWrapper.fromCapture(captureResultParams.mCameraCaptureSessionParams.cameraCaptureSession, triggerRequest);
+        Observable<CaptureResult> previewObservable = CameraRxWrapper.fromSetRepeatingRequest(captureResultParams.mCameraCaptureSessionParams.cameraCaptureSession, previewRequest);
         RequestStateMachine requestStateMachine = new RequestStateMachine();
-        Observable<CameraController.State> convergeObservable = Observable
+        Observable<CaptureResultParams> convergeObservable = Observable
             .merge(previewObservable, triggerObservable) //order matters
             .first(result -> filterWithStateMachine(result, requestStateMachine))
-            .map(result -> state);
+            .map(result -> captureResultParams);
 
-        Observable<CameraController.State> timeOutObservable = Observable
-            .just(state)
+        Observable<CaptureResultParams> timeOutObservable = Observable
+            .just(captureResultParams)
             .delay(TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .observeOn(AndroidSchedulers.mainThread());
 
