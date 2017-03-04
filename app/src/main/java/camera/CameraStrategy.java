@@ -23,10 +23,10 @@ import rx.Observable;
 @TargetApi(21)
 class CameraStrategy {
     private static final String TAG = CameraStrategy.class.getSimpleName();
-    private static final int MAX_PREVIEW_WIDTH = 1024;
-    private static final int MAX_PREVIEW_HEIGHT = 1024;
+    private static final int MAX_PREVIEW_WIDTH = 1920;
+    private static final int MAX_PREVIEW_HEIGHT = 1920;
     private static final int MAX_STILL_IMAGE_WIDTH = 1920;
-    private static final int MAX_STILL_IMAGE_HEIGHT = 1080;
+    private static final int MAX_STILL_IMAGE_HEIGHT = 1920;
 
     @Nullable
     static String chooseDefaultCamera(@NonNull CameraManager manager) throws CameraAccessException {

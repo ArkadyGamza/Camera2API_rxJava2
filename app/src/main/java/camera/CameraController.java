@@ -13,8 +13,6 @@ import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CameraMetadata;
 import android.hardware.camera2.CaptureRequest;
-import android.hardware.camera2.CaptureResult;
-import android.hardware.camera2.TotalCaptureResult;
 import android.media.ImageReader;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
@@ -23,11 +21,13 @@ import android.util.Log;
 import android.util.Size;
 import android.view.Surface;
 import android.view.TextureView;
+import android.view.View;
 import android.view.WindowManager;
 
 import java.io.File;
 
 import rx.Observable;
+import rx.Single;
 import rx.android.schedulers.AndroidSchedulers;
 import rx.schedulers.Schedulers;
 import rx.subjects.PublishSubject;
@@ -39,15 +39,44 @@ public class CameraController {
     static final String TAG = CameraController.class.getName();
 
     @NonNull
-    private final Callback mCallback;
     private final Context mContext;
-    private final WindowManager mWindowManager;
+    @NonNull
+    private final Callback mCallback;
     private final int mLayoutOrientation;
-    private File mFile;
-    private AutoFitTextureView mTextureView;
-    private String mCameraId;
-    private CameraCharacteristics mCameraCharacteristics;
-    private Size mPreviewSize;
+    @NonNull
+    private final File mFile;
+    @NonNull
+    private final AutoFitTextureView mTextureView;
+    @NonNull
+    private final WindowManager mWindowManager;
+    @NonNull
+    private final CameraManager mCameraManager;
+    private SurfaceParams mSurfaceParams;
+    private ImageReader mImageReader;
+
+    private class CameraParams {
+        @NonNull
+        private final String cameraId;
+        @NonNull
+        private final CameraCharacteristics cameraCharacteristics;
+        @NonNull
+        private final Size previewSize;
+
+        private CameraParams(@NonNull String cameraId, @NonNull CameraCharacteristics cameraCharacteristics, @NonNull Size previewSize) {
+            this.cameraId = cameraId;
+            this.cameraCharacteristics = cameraCharacteristics;
+            this.previewSize = previewSize;
+        }
+    }
+
+    private class SurfaceParams {
+        @NonNull
+        private final Surface previewSurface;
+
+        private SurfaceParams(@NonNull Surface previewSurface) {
+            this.previewSurface = previewSurface;
+        }
+    }
 
     private final CompositeSubscription mSubscriptions = new CompositeSubscription();
     private final PublishSubject<Object> mOnPauseSubject = PublishSubject.create();
@@ -57,14 +86,17 @@ public class CameraController {
     private final ConvergeWaiter mAutoFocusConvergeWaiter = ConvergeWaiter.Factory.createAutoFocusConvergeWaiter();
     private final ConvergeWaiter mAutoExposureConvergeWaiter = ConvergeWaiter.Factory.createAutoExposureConvergeWaiter();
 
-    public CameraController(Context context, @NonNull Callback callback, @NonNull String photoFileUrl,
+
+    public CameraController(@NonNull Context context, @NonNull Callback callback, @NonNull String photoFileUrl,
                             @NonNull AutoFitTextureView textureView, int layoutOrientation) {
         mContext = context;
         mCallback = callback;
-        mLayoutOrientation = layoutOrientation;
-        mWindowManager = (WindowManager) mContext.getSystemService(Context.WINDOW_SERVICE);
         mFile = new File(photoFileUrl);
         mTextureView = textureView;
+        mLayoutOrientation = layoutOrientation;
+        mWindowManager = (WindowManager) mContext.getSystemService(Context.WINDOW_SERVICE);
+        mCameraManager = (CameraManager) mContext.getSystemService(Context.CAMERA_SERVICE);
+
     }
 
     public void takePhoto() {
@@ -75,32 +107,35 @@ public class CameraController {
         mOnSwitchCamera.onNext(null);
     }
 
-    public PresenterLifecycle getLifecycle() {
+    public AndroidLifecycle getLifecycle() {
         return mLifecycleImpl;
     }
 
-    private final PresenterLifecycle mLifecycleImpl = new PresenterLifecycle() {
+    private CameraParams mCameraParams;
+    private final AndroidLifecycle mLifecycleImpl = new AndroidLifecycle() {
         private static final String SIS_CAMERA_ID = "SIS_CAMERA_ID";
 
         @Override
         public void onCreate(@Nullable Bundle saveState) {
+            Log.d(TAG, "\tonCreate");
+            String cameraId = null;
             if (saveState != null) {
-                mCameraId = saveState.getString(SIS_CAMERA_ID);
+                cameraId = saveState.getString(SIS_CAMERA_ID);
             }
 
-            CameraManager cameraManager = (CameraManager) mContext.getSystemService(Context.CAMERA_SERVICE);
-
             try {
-                if (mCameraId == null) {
-                    mCameraId = CameraStrategy.chooseDefaultCamera(cameraManager);
+                if (cameraId == null) {
+                    Log.d(TAG, "\tchoosing default camera");
+                    cameraId = CameraStrategy.chooseDefaultCamera(mCameraManager);
                 }
 
-                if (mCameraId == null) {
+                if (cameraId == null) {
                     mCallback.onException(new IllegalStateException("Can't find any camera"));
                     return;
                 }
 
-                setupPreviewSize(cameraManager);
+                mCameraParams = getCameraParams(cameraId);
+                setTextureAspectRatio(mCameraParams);
             }
             catch (CameraAccessException e) {
                 mCallback.onException(e);
@@ -117,6 +152,8 @@ public class CameraController {
 
                 @Override
                 public void onSurfaceTextureSizeChanged(SurfaceTexture surface, int width, int height) {
+                    Log.d(TAG, "\tonSurfaceTextureSizeChanged");
+                    mOnSurfaceTextureAvailable.onNext(surface);
                     //NO-OP
                 }
 
@@ -131,21 +168,29 @@ public class CameraController {
                 }
             });
 
+            // For some reasons onSurfaceSizeChanged is not always called, this is a workaround
+            mTextureView.addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+                Log.d(TAG, "\tonLayoutChange");
+                if (mTextureView.isAvailable()) {
+                    Log.d(TAG, "\tmTextureView.isAvailable()");
+                    mOnSurfaceTextureAvailable.onNext(mTextureView.getSurfaceTexture());
+                }
+            });
         }
 
         @Override
         public void onDestroy() {
-
+            Log.d(TAG, "\tonDestroy");
         }
 
         @Override
         public void onSaveInstanceState(@NonNull Bundle outState) {
-            outState.putString(SIS_CAMERA_ID, mCameraId);
+            outState.putString(SIS_CAMERA_ID, mCameraParams.cameraId);
         }
 
         @Override
         public void onStart() {
-
+            Log.d(TAG, "\tonStart");
         }
 
         @Override
@@ -176,7 +221,7 @@ public class CameraController {
 
         @Override
         public void onStop() {
-
+            Log.d(TAG, "\tonStop");
         }
 
         @Override
@@ -185,16 +230,21 @@ public class CameraController {
         }
     };
 
-    private void setupPreviewSize(CameraManager cameraManager) throws CameraAccessException {
-        mCameraCharacteristics = cameraManager.getCameraCharacteristics(mCameraId);
-        mPreviewSize = CameraStrategy.getPreviewSize(mCameraCharacteristics);
+    private CameraParams getCameraParams(@NonNull String cameraId) throws CameraAccessException {
+        Log.d(TAG, "\tsetupPreviewSize");
+        CameraCharacteristics cameraCharacteristics = mCameraManager.getCameraCharacteristics(cameraId);
+        Size previewSize = CameraStrategy.getPreviewSize(cameraCharacteristics);
+        return new CameraParams(cameraId, cameraCharacteristics, previewSize);
+    }
+
+    private void setTextureAspectRatio(@NonNull CameraParams cameraParams) {
         // We fit the aspect ratio of TextureView to the size of preview we picked.
         // looks like the dimensions we get from camera characteristics are for Landscape layout, so we swap it for portrait
         if (mLayoutOrientation == Configuration.ORIENTATION_LANDSCAPE) {
-            mTextureView.setAspectRatio(mPreviewSize.getWidth(), mPreviewSize.getHeight());
+            mTextureView.setAspectRatio(cameraParams.previewSize.getWidth(), cameraParams.previewSize.getHeight());
         }
         else {
-            mTextureView.setAspectRatio(mPreviewSize.getHeight(), mPreviewSize.getWidth());
+            mTextureView.setAspectRatio(cameraParams.previewSize.getHeight(), cameraParams.previewSize.getWidth());
         }
     }
 
@@ -205,45 +255,63 @@ public class CameraController {
         mSubscriptions.clear();
 
         //this emits state with non-null camera device when camera is opened, and emits camera with null device when it's closed
-        Observable<State> openCameraObservable = mOnSurfaceTextureAvailable.asObservable()
-            .flatMap(this::initState)
-            .doOnNext(this::initImageReader)
-            .flatMap(CameraRxWrapper::openCamera)
+        //todo change to single
+        Observable<CameraDevice> cameraDeviceObservable = mOnSurfaceTextureAvailable.asObservable()
+            .first()
+            .doOnNext(this::setupSurface)
+            .doOnNext(s -> initImageReader())
+            .flatMap(s -> CameraRxWrapper.openCamera(mCameraParams.cameraId, mCameraManager))
             .share();
 
-        Observable<State> openSessionObservable = openCameraObservable
-            .filter(state -> state.cameraDevice != null)
-            .flatMap(CameraRxWrapper::createCaptureSession)
+        Observable<CameraCaptureSessionParams> cameraCaptureSessionObservable = cameraDeviceObservable
+            .filter(cameraDevice -> cameraDevice != null)
+            .flatMap(cameraDevice -> CameraRxWrapper
+                .createCaptureSession(cameraDevice, mImageReader, mSurfaceParams.previewSurface)
+                .map(cameraCaptureSession -> new CameraCaptureSessionParams(cameraDevice, cameraCaptureSession))
+            )
             .share();
 
-        Observable<State> previewObservable = openSessionObservable
-            .filter(state -> state.captureSession != null)
-            .flatMap(state -> startPreview(state).first())
+        //todo change to single
+        Observable<CaptureResultParams> previewObservable = cameraCaptureSessionObservable
+            .filter(cameraCaptureSessionParams -> cameraCaptureSessionParams.cameraCaptureSession != null)
+            .flatMap(cameraCaptureSessionParams -> startPreview(cameraCaptureSessionParams).first())
+            .doOnNext(state -> mTextureView.setVisibility(View.VISIBLE))
             .share();
 
-        mSubscriptions.add(Observable.combineLatest(previewObservable, mOnShutterClick, (state, o) -> state)
-            .doOnNext(o -> Log.d("!!!", "shutter event"))
+        mSubscriptions.add(Observable.combineLatest(previewObservable, mOnShutterClick, (captureResultParams, o) -> captureResultParams)
+            .doOnNext(state -> mCallback.onFocusStarted())
             .flatMap(this::waitForAf)
-            .doOnNext(o -> Log.d("!!!", "FOCUS GOT"))
             .flatMap(this::waitForAe)
-            .doOnNext(o -> Log.d("!!!", "AE GOT"))
-            .flatMap(this::captureStillPicture)
-            .doOnNext(o -> Log.d("!!!", "CAPTURED A PIC"))
+            .doOnNext(state -> mCallback.onFocusFinished())
+            .flatMap(captureResultParams -> captureStillPicture(captureResultParams.mCameraCaptureSessionParams))
             .subscribe(state -> {
             }, this::onError));
 
-        mSubscriptions.add(Observable.combineLatest(previewObservable, mOnSwitchCamera.first(), (state, o) -> state)
-            .doOnNext(this::closeSession)
-            .flatMap(state -> openSessionObservable.filter(state1 -> state1.captureSession == null))
-            .doOnNext(this::closeCamera)
-            .flatMap(state -> openCameraObservable.filter(state2 -> state2.cameraDevice == null))
-            .doOnNext(this::closeImageReader)
-            .subscribe(this::switchCameraInternal, this::onError));
+        mSubscriptions.add(Observable.combineLatest(previewObservable, mOnSwitchCamera.first(), (captureResultParams, o) -> captureResultParams)
+            .first()
+            .doOnNext(state -> mTextureView.setVisibility(View.INVISIBLE))
+            .doOnNext(captureResultParams -> closeSession(captureResultParams.mCameraCaptureSessionParams.cameraCaptureSession))
+            .flatMap(captureResultParams -> cameraCaptureSessionObservable
+                .filter(cameraCaptureSessionParams -> cameraCaptureSessionParams.cameraCaptureSession == null)  //waiting for real close
+            )
+            .doOnNext(cameraCaptureSessionParams -> closeCamera(cameraCaptureSessionParams.cameraDevice))
+            .flatMap(cameraCaptureSessionParams -> cameraDeviceObservable
+                .filter(cameraDevice -> cameraDevice == null) //wait for real close
+            )
+            .doOnNext(cameraDevice -> closeImageReader())
+            .subscribe(cameraDevice -> switchCameraInternal(), this::onError));
 
-        mSubscriptions.add(Observable.combineLatest(openCameraObservable, mOnPauseSubject.first(), (state, o) -> state)
-            .doOnNext(this::closeSession)
-            .doOnNext(this::closeCamera)
-            .doOnNext(this::closeImageReader)
+        mSubscriptions.add(Observable.combineLatest(previewObservable, mOnPauseSubject.first(), (state, o) -> state)
+            .doOnNext(state -> mTextureView.setVisibility(View.INVISIBLE))
+            .doOnNext(captureResultParams -> closeSession(captureResultParams.mCameraCaptureSessionParams.cameraCaptureSession))
+            .flatMap(captureResultParams -> cameraCaptureSessionObservable
+                .filter(cameraCaptureSessionParams -> cameraCaptureSessionParams.cameraCaptureSession == null)  //waiting for real close
+            )
+            .doOnNext(cameraCaptureSessionParams -> closeCamera(cameraCaptureSessionParams.cameraDevice))
+            .flatMap(cameraCaptureSessionParams -> cameraDeviceObservable
+                .filter(cameraDevice -> cameraDevice == null) //wait for real close
+            )
+            .doOnNext(cameraDevice -> closeImageReader())
             .subscribe(state -> unsubscribe(), this::onError));
     }
 
@@ -264,56 +332,51 @@ public class CameraController {
         mSubscriptions.clear();
     }
 
-    @NonNull
-    private Observable<State> initState(@NonNull SurfaceTexture surfaceTexture) {
-        Log.d(TAG, "\tinitState");
-        State state = new State();
-        state.surfaceTexture = surfaceTexture;
-        surfaceTexture.setDefaultBufferSize(mPreviewSize.getWidth(), mPreviewSize.getHeight());
-        state.previewSurface = new Surface(surfaceTexture);
-        state.cameraManager = (CameraManager) mContext.getSystemService(Context.CAMERA_SERVICE);
-        state.cameraId = mCameraId;
-
-        return Observable.just(state);
+    private void setupSurface(@NonNull SurfaceTexture surfaceTexture) {
+        surfaceTexture.setDefaultBufferSize(mCameraParams.previewSize.getWidth(), mCameraParams.previewSize.getHeight());
+        Surface previewSurface = new Surface(surfaceTexture);
+        mSurfaceParams = new SurfaceParams(previewSurface);
     }
 
-    private void switchCameraInternal(@NonNull State state) {
+    private void switchCameraInternal() {
         Log.d(TAG, "\tswitchCameraInternal");
         try {
             unsubscribe();
-            mCameraId = CameraStrategy.switchCamera(state.cameraManager, mCameraId);
-            setupPreviewSize(state.cameraManager);
+            String cameraId = CameraStrategy.switchCamera(mCameraManager, mCameraParams.cameraId);
+            mCameraParams = getCameraParams(cameraId);
+            setTextureAspectRatio(mCameraParams);
             subscribe();
-            mOnSurfaceTextureAvailable.onNext(mTextureView.getSurfaceTexture());
+            // waiting for textureView to be measured
         }
         catch (CameraAccessException e) {
             onError(e);
         }
     }
 
-    private void initImageReader(@NonNull State state) {
+    private void initImageReader() {
         Log.d(TAG, "\tinitImageReader");
-        Size sizeForImageReader = CameraStrategy.getStillImageSize(mCameraCharacteristics, mPreviewSize);
-        state.imageReader = ImageReader.newInstance(sizeForImageReader.getWidth(), sizeForImageReader.getHeight(), ImageFormat.JPEG, 1);
-        mSubscriptions.add(ImageSaverRxWrapper.createOnImageAvailableObservable(state.imageReader)
+        Size sizeForImageReader = CameraStrategy.getStillImageSize(mCameraParams.cameraCharacteristics, mCameraParams.previewSize);
+        mImageReader = ImageReader.newInstance(sizeForImageReader.getWidth(), sizeForImageReader.getHeight(), ImageFormat.JPEG, 1);
+        mSubscriptions.add(ImageSaverRxWrapper.createOnImageAvailableObservable(mImageReader)
             .observeOn(Schedulers.io())
-            .flatMap(imageReader -> ImageSaverRxWrapper.save(imageReader.acquireLatestImage(), mFile).toObservable())
+            .flatMap(imageReader1 -> ImageSaverRxWrapper.save(imageReader1.acquireLatestImage(), mFile).toObservable())
             .observeOn(AndroidSchedulers.mainThread())
             .subscribe(file -> mCallback.onPhotoTaken(file.getAbsolutePath(), getLensFacingPhotoType())));
     }
 
-    @NonNull
+    @Nullable
     private Integer getLensFacingPhotoType() {
-        return mCameraCharacteristics.get(CameraCharacteristics.LENS_FACING);
+        return mCameraParams.cameraCharacteristics.get(CameraCharacteristics.LENS_FACING);
     }
 
     @NonNull
-    private Observable<State> startPreview(@NonNull State state) {
+    private Observable<CaptureResultParams> startPreview(@NonNull CameraCaptureSessionParams cameraCaptureSessionParams) {
         Log.d(TAG, "\tstartPreview");
         try {
+            CaptureRequest.Builder previewBuilder = createPreviewBuilder(cameraCaptureSessionParams.cameraCaptureSession, mSurfaceParams.previewSurface);
             return CameraRxWrapper
-                .fromSetRepeatingRequest(state.captureSession, createPreviewBuilder(state.captureSession, state.previewSurface).build())
-                .map(result -> state);
+                .fromSetRepeatingRequest(cameraCaptureSessionParams.cameraCaptureSession, previewBuilder.build())
+                .map(captureResult -> new CaptureResultParams(cameraCaptureSessionParams, captureResult));
         }
         catch (CameraAccessException e) {
             return Observable.error(e);
@@ -332,10 +395,11 @@ public class CameraController {
         return false;
     }
 
-    private Observable<CameraController.State> waitForAf(CameraController.State state) {
+    private Observable<CaptureResultParams> waitForAf(@NonNull CaptureResultParams captureResultParams) {
         try {
+            CaptureRequest.Builder previewBuilder = createPreviewBuilder(captureResultParams.mCameraCaptureSessionParams.cameraCaptureSession, mSurfaceParams.previewSurface);
             return mAutoFocusConvergeWaiter
-                .waitForConverge(state, createPreviewBuilder(state.captureSession, state.previewSurface))
+                .waitForConverge(captureResultParams, previewBuilder)
                 .toObservable();
         }
         catch (CameraAccessException e) {
@@ -344,10 +408,11 @@ public class CameraController {
     }
 
     @NonNull
-    private Observable<State> waitForAe(State state) {
+    private Observable<CaptureResultParams> waitForAe(@NonNull CaptureResultParams captureResultParams) {
         try {
+            CaptureRequest.Builder previewBuilder = createPreviewBuilder(captureResultParams.mCameraCaptureSessionParams.cameraCaptureSession, mSurfaceParams.previewSurface);
             return mAutoExposureConvergeWaiter
-                .waitForConverge(state, createPreviewBuilder(state.captureSession, state.previewSurface))
+                .waitForConverge(captureResultParams, previewBuilder)
                 .toObservable();
         }
         catch (CameraAccessException e) {
@@ -356,12 +421,12 @@ public class CameraController {
     }
 
     @NonNull
-    private Observable<State> captureStillPicture(State state) {
+    private Observable<CaptureResultParams> captureStillPicture(@NonNull CameraCaptureSessionParams cameraCaptureSessionParams) {
         Log.d(TAG, "\tcaptureStillPicture");
         try {
-            final CaptureRequest.Builder builder = createStillPictureBuilder(state);
-            return CameraRxWrapper.fromCapture(state.captureSession, builder.build())
-                .map(result -> state);
+            final CaptureRequest.Builder builder = createStillPictureBuilder(cameraCaptureSessionParams.cameraDevice);
+            return CameraRxWrapper.fromCapture(cameraCaptureSessionParams.cameraCaptureSession, builder.build())
+                .map(result -> new CaptureResultParams(cameraCaptureSessionParams, result));
         }
         catch (CameraAccessException e) {
             return Observable.error(e);
@@ -369,16 +434,16 @@ public class CameraController {
     }
 
     @NonNull
-    private CaptureRequest.Builder createStillPictureBuilder(State state) throws CameraAccessException {
+    private CaptureRequest.Builder createStillPictureBuilder(@NonNull CameraDevice cameraDevice) throws CameraAccessException {
         final CaptureRequest.Builder builder;
-        builder = state.cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
+        builder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
         builder.set(CaptureRequest.CONTROL_CAPTURE_INTENT, CaptureRequest.CONTROL_CAPTURE_INTENT_STILL_CAPTURE);
         builder.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CameraMetadata.CONTROL_AE_PRECAPTURE_TRIGGER_IDLE);
-        builder.addTarget(state.imageReader.getSurface());
+        builder.addTarget(mImageReader.getSurface());
         setup3Auto(builder);
 
         int rotation = mWindowManager.getDefaultDisplay().getRotation();
-        builder.set(CaptureRequest.JPEG_ORIENTATION, CameraOrientationHelper.getJpegOrientation(mCameraCharacteristics, rotation));
+        builder.set(CaptureRequest.JPEG_ORIENTATION, CameraOrientationHelper.getJpegOrientation(mCameraParams.cameraCharacteristics, rotation));
         return builder;
     }
 
@@ -394,14 +459,14 @@ public class CameraController {
         // Enable auto-magical 3A run by camera device
         builder.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO);
 
-        Float minFocusDist = mCameraCharacteristics.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE);
+        Float minFocusDist = mCameraParams.cameraCharacteristics.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE);
 
         // If MINIMUM_FOCUS_DISTANCE is 0, lens is fixed-focus and we need to skip the AF run.
         boolean noAFRun = (minFocusDist == null || minFocusDist == 0);
 
         if (!noAFRun) {
             // If there is a "continuous picture" mode available, use it, otherwise default to AUTO.
-            int[] afModes = mCameraCharacteristics.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES);
+            int[] afModes = mCameraParams.cameraCharacteristics.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES);
             if (contains(afModes, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)) {
                 builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
             }
@@ -412,7 +477,7 @@ public class CameraController {
 
         // If there is an auto-magical flash control mode available, use it, otherwise default to
         // the "on" mode, which is guaranteed to always be available.
-        int[] aeModes = mCameraCharacteristics.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_MODES);
+        int[] aeModes = mCameraParams.cameraCharacteristics.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_MODES);
         if (contains(aeModes, CaptureRequest.CONTROL_AE_MODE_ON_AUTO_FLASH)) {
             builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON_AUTO_FLASH);
         }
@@ -420,53 +485,42 @@ public class CameraController {
             builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON);
         }
 
-//        builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON_ALWAYS_FLASH);
-//        builder.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_SINGLE);
-
         // If there is an auto-magical white balance control mode available, use it.
-        int[] awbModes = mCameraCharacteristics.get(CameraCharacteristics.CONTROL_AWB_AVAILABLE_MODES);
+        int[] awbModes = mCameraParams.cameraCharacteristics.get(CameraCharacteristics.CONTROL_AWB_AVAILABLE_MODES);
         if (contains(awbModes, CaptureRequest.CONTROL_AWB_MODE_AUTO)) {
             // Allow AWB to run auto-magically if this device supports this
             builder.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO);
         }
     }
 
-    private void closeSession(@NonNull State state) {
+    private void closeSession(@Nullable CameraCaptureSession cameraCaptureSession) {
         Log.d(TAG, "\tcloseSession");
-        if (state.captureSession != null) {
-            state.captureSession.close();
-            state.captureSession = null;
+        if (cameraCaptureSession != null) {
+            cameraCaptureSession.close();
         }
     }
 
-    private void closeCamera(@NonNull State state) {
+    private void closeCamera(@Nullable CameraDevice cameraDevice) {
         Log.d(TAG, "\tcloseCamera");
-        if (state.cameraDevice != null) {
-            state.cameraDevice.close();
-            state.cameraDevice = null;
+        if (cameraDevice != null) {
+            cameraDevice.close();
         }
     }
 
-    private void closeImageReader(@NonNull State state) {
+    private void closeImageReader() {
         Log.d(TAG, "\tcloseImageReader");
-        if (state.imageReader != null) {
-            state.imageReader.close();
-            state.imageReader = null;
+        if (mImageReader != null) {
+            mImageReader.close();
+            mImageReader = null;
         }
-    }
-
-    public static class State {
-        String cameraId;
-        Surface previewSurface;
-        CameraDevice cameraDevice;
-        CameraManager cameraManager;
-        ImageReader imageReader;
-        CameraCaptureSession captureSession;
-        SurfaceTexture surfaceTexture;
     }
 
     public interface Callback {
-        void onPhotoTaken(@NonNull String photoUrl, @NonNull Integer photoSourceType);
+        void onFocusStarted();
+
+        void onFocusFinished();
+
+        void onPhotoTaken(@NonNull String photoUrl, @Nullable Integer photoSourceType);
 
         void onCameraAccessException();
 

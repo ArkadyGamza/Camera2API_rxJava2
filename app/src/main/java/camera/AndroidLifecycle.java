@@ -7,7 +7,7 @@ import android.support.annotation.NonNull;
 /**
  * Extended presenter's lifecycle methods for more complex presenters
  */
-public interface PresenterLifecycle extends PresenterShortLifecycle {
+public interface AndroidLifecycle extends PresenterShortLifecycle {
 
     void onSaveInstanceState(@NonNull Bundle outState);
 

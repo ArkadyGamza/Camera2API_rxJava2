@@ -4,10 +4,12 @@ import android.annotation.TargetApi;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CameraDevice;
+import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CaptureFailure;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.TotalCaptureResult;
+import android.media.ImageReader;
 import android.support.annotation.NonNull;
 import android.util.Log;
 import android.view.Surface;
@@ -27,11 +29,11 @@ public class CameraRxWrapper {
     private static final String TAG = CameraRxWrapper.class.getName();
 
 
-    public static Observable<CaptureResult> fromCapture(@NonNull CameraCaptureSession captureSession, @NonNull CaptureRequest request) {
+    static Observable<CaptureResult> fromCapture(@NonNull CameraCaptureSession captureSession, @NonNull CaptureRequest request) {
         return Observable.create(subscriber -> {
             try {
-                dumpRequest(request);
-                captureSession.capture(request, new MyLogger(getSessionListener(subscriber)), null);
+//                dumpRequest(request);
+                captureSession.capture(request, getSessionListener(subscriber), null);
             }
             catch (CameraAccessException e) {
                 if (!subscriber.isUnsubscribed()) {
@@ -41,11 +43,10 @@ public class CameraRxWrapper {
         });
     }
 
-    public static Observable<CaptureResult> fromSetRepeatingRequest(@NonNull CameraCaptureSession captureSession, @NonNull CaptureRequest request) {
+    static Observable<CaptureResult> fromSetRepeatingRequest(@NonNull CameraCaptureSession captureSession, @NonNull CaptureRequest request) {
         return Observable.create(subscriber -> {
             try {
-                dumpRequest(request);
-                captureSession.setRepeatingRequest(request, new MyLogger(getSessionListener(subscriber)), null);
+                captureSession.setRepeatingRequest(request, getSessionListener(subscriber), null);
             }
             catch (CameraAccessException e) {
                 if (!subscriber.isUnsubscribed()) {
@@ -73,23 +74,22 @@ public class CameraRxWrapper {
                     subscriber.onError(new CameraCaptureFailedException(failure));
                 }
             }
-
         };
     }
 
     @NonNull
-    public static Observable<CameraController.State> createCaptureSession(@NonNull CameraController.State state) {
+    public static Observable<CameraCaptureSession> createCaptureSession(
+        @NonNull CameraDevice cameraDevice, @NonNull ImageReader imageReader, @NonNull Surface previewSurface) {
         return Observable.create(subscriber -> {
             try {
                 Log.d(TAG, "\tcreateCaptureSession");
-                List<Surface> outputs = Arrays.asList(state.previewSurface, state.imageReader.getSurface());
-                state.cameraDevice.createCaptureSession(outputs, new CameraCaptureSession.StateCallback() {
+                List<Surface> outputs = Arrays.asList(previewSurface, imageReader.getSurface());
+                cameraDevice.createCaptureSession(outputs, new CameraCaptureSession.StateCallback() {
                     @Override
                     public void onConfigured(@NonNull CameraCaptureSession session) {
                         Log.d(TAG, "\tcreateCaptureSession - onConfigured");
-                        state.captureSession = session;
                         if (!subscriber.isUnsubscribed()) {
-                            subscriber.onNext(state);
+                            subscriber.onNext(session);
                         }
                     }
 
@@ -104,9 +104,8 @@ public class CameraRxWrapper {
                     @Override
                     public void onClosed(@NonNull CameraCaptureSession session) {
                         Log.d(TAG, "\tcreateCaptureSession - onClosed");
-                        state.captureSession = null;
                         if (!subscriber.isUnsubscribed()) {
-                            subscriber.onNext(state);
+                            subscriber.onNext(null); //todo
                         }
                     }
                 }, null);
@@ -119,26 +118,24 @@ public class CameraRxWrapper {
         });
     }
 
-    public static Observable<CameraController.State> openCamera(@NonNull CameraController.State state) {
+    public static Observable<CameraDevice> openCamera(@NonNull String cameraId, @NonNull CameraManager cameraManager) {
         return Observable.create(subscriber -> {
             try {
                 Log.d(TAG, "\topenCamera");
-                state.cameraManager.openCamera(state.cameraId, new CameraDevice.StateCallback() {
+                cameraManager.openCamera(cameraId, new CameraDevice.StateCallback() {
                     @Override
-                    public void onOpened(@NonNull CameraDevice camera) {
+                    public void onOpened(@NonNull CameraDevice cameraDevice) {
                         Log.d(TAG, "\topenCamera - onOpened");
-                        state.cameraDevice = camera;
                         if (!subscriber.isUnsubscribed()) {
-                            subscriber.onNext(state);
+                            subscriber.onNext(cameraDevice);
                         }
                     }
 
                     @Override
-                    public void onClosed(@NonNull CameraDevice camera) {
+                    public void onClosed(@NonNull CameraDevice cameraDevice) {
                         Log.d(TAG, "\topenCamera - onClosed");
-                        state.cameraDevice = null;
                         if (!subscriber.isUnsubscribed()) {
-                            subscriber.onNext(state);
+                            subscriber.onNext(null); //todo
                         }
                     }
 
