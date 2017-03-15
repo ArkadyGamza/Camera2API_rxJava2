@@ -372,15 +372,10 @@ public class CameraController {
     @NonNull
     private Observable<CaptureResultParams> startPreview(@NonNull CameraCaptureSessionParams cameraCaptureSessionParams) {
         Log.d(TAG, "\tstartPreview");
-        try {
-            CaptureRequest.Builder previewBuilder = createPreviewBuilder(cameraCaptureSessionParams.cameraCaptureSession, mSurfaceParams.previewSurface);
-            return CameraRxWrapper
-                .fromSetRepeatingRequest(cameraCaptureSessionParams.cameraCaptureSession, previewBuilder.build())
-                .map(captureResult -> new CaptureResultParams(cameraCaptureSessionParams, captureResult));
-        }
-        catch (CameraAccessException e) {
-            return Observable.error(e);
-        }
+        return Observable
+            .fromCallable(() -> createPreviewBuilder(cameraCaptureSessionParams.cameraCaptureSession, mSurfaceParams.previewSurface))
+            .flatMap(previewBuilder -> CameraRxWrapper.fromSetRepeatingRequest(cameraCaptureSessionParams.cameraCaptureSession, previewBuilder.build())            )
+            .map(captureResult -> new CaptureResultParams(cameraCaptureSessionParams, captureResult));
     }
 
     private static boolean contains(int[] modes, int mode) {
@@ -396,41 +391,33 @@ public class CameraController {
     }
 
     private Observable<CaptureResultParams> waitForAf(@NonNull CaptureResultParams captureResultParams) {
-        try {
-            CaptureRequest.Builder previewBuilder = createPreviewBuilder(captureResultParams.mCameraCaptureSessionParams.cameraCaptureSession, mSurfaceParams.previewSurface);
-            return mAutoFocusConvergeWaiter
-                .waitForConverge(captureResultParams, previewBuilder)
-                .toObservable();
-        }
-        catch (CameraAccessException e) {
-            return Observable.error(e);
-        }
+        return Observable
+            .fromCallable(() -> createPreviewBuilder(captureResultParams.mCameraCaptureSessionParams.cameraCaptureSession, mSurfaceParams.previewSurface))
+            .flatMap(
+                previewBuilder -> mAutoFocusConvergeWaiter
+                    .waitForConverge(captureResultParams, previewBuilder)
+                    .toObservable()
+            );
     }
 
     @NonNull
     private Observable<CaptureResultParams> waitForAe(@NonNull CaptureResultParams captureResultParams) {
-        try {
-            CaptureRequest.Builder previewBuilder = createPreviewBuilder(captureResultParams.mCameraCaptureSessionParams.cameraCaptureSession, mSurfaceParams.previewSurface);
-            return mAutoExposureConvergeWaiter
-                .waitForConverge(captureResultParams, previewBuilder)
-                .toObservable();
-        }
-        catch (CameraAccessException e) {
-            return Observable.error(e);
-        }
+        return Observable
+            .fromCallable(() -> createPreviewBuilder(captureResultParams.mCameraCaptureSessionParams.cameraCaptureSession, mSurfaceParams.previewSurface))
+            .flatMap(
+                previewBuilder -> mAutoExposureConvergeWaiter
+                    .waitForConverge(captureResultParams, previewBuilder)
+                    .toObservable()
+            );
     }
 
     @NonNull
     private Observable<CaptureResultParams> captureStillPicture(@NonNull CameraCaptureSessionParams cameraCaptureSessionParams) {
         Log.d(TAG, "\tcaptureStillPicture");
-        try {
-            final CaptureRequest.Builder builder = createStillPictureBuilder(cameraCaptureSessionParams.cameraDevice);
-            return CameraRxWrapper.fromCapture(cameraCaptureSessionParams.cameraCaptureSession, builder.build())
-                .map(result -> new CaptureResultParams(cameraCaptureSessionParams, result));
-        }
-        catch (CameraAccessException e) {
-            return Observable.error(e);
-        }
+        return Observable
+            .fromCallable(() -> createStillPictureBuilder(cameraCaptureSessionParams.cameraDevice))
+            .flatMap(builder -> CameraRxWrapper.fromCapture(cameraCaptureSessionParams.cameraCaptureSession, builder.build()))
+            .map(result -> new CaptureResultParams(cameraCaptureSessionParams, result));
     }
 
     @NonNull
