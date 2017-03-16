@@ -17,8 +17,8 @@ import android.view.Surface;
 import java.util.Arrays;
 import java.util.List;
 
-import rx.Observable;
-import rx.Subscriber;
+import io.reactivex.Observable;
+import io.reactivex.ObservableEmitter;
 
 /**
  * Helper class, creates Observables from camera async methods.
@@ -28,50 +28,33 @@ public class CameraRxWrapper {
 
     private static final String TAG = CameraRxWrapper.class.getName();
 
-
     static Observable<CaptureResult> fromCapture(@NonNull CameraCaptureSession captureSession, @NonNull CaptureRequest request) {
-        return Observable.create(subscriber -> {
-            try {
-//                dumpRequest(request);
-                captureSession.capture(request, getSessionListener(subscriber), null);
-            }
-            catch (CameraAccessException e) {
-                if (!subscriber.isUnsubscribed()) {
-                    subscriber.onError(e);
-                }
-            }
-        });
+        return Observable
+            .create(source -> captureSession.capture(request, getSessionListener(source), null));
     }
 
     static Observable<CaptureResult> fromSetRepeatingRequest(@NonNull CameraCaptureSession captureSession, @NonNull CaptureRequest request) {
-        return Observable.create(subscriber -> {
-            try {
-                captureSession.setRepeatingRequest(request, getSessionListener(subscriber), null);
-            }
-            catch (CameraAccessException e) {
-                if (!subscriber.isUnsubscribed()) {
-                    subscriber.onError(e);
-                }
-            }
-        });
+        return Observable
+            .create(source -> captureSession.setRepeatingRequest(request, getSessionListener(source), null));
     }
 
     @NonNull
-    private static CameraCaptureSession.CaptureCallback getSessionListener(final Subscriber<? super CaptureResult> subscriber) {
+    private static CameraCaptureSession.CaptureCallback getSessionListener(final ObservableEmitter<CaptureResult> source) {
         return new CameraCaptureSession.CaptureCallback() {
             @Override
             public void onCaptureCompleted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
                 super.onCaptureCompleted(session, request, result);
-                if (!subscriber.isUnsubscribed()) {
-                    subscriber.onNext(result);
+                if (!source.isDisposed()) {
+                    source.onNext(result);
+                    source.onComplete();
                 }
             }
 
             @Override
             public void onCaptureFailed(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull CaptureFailure failure) {
                 super.onCaptureFailed(session, request, failure);
-                if (!subscriber.isUnsubscribed()) {
-                    subscriber.onError(new CameraCaptureFailedException(failure));
+                if (!source.isDisposed()) {
+                    source.onError(new CameraCaptureFailedException(failure));
                 }
             }
         };
@@ -80,7 +63,7 @@ public class CameraRxWrapper {
     @NonNull
     public static Observable<CameraCaptureSession> createCaptureSession(
         @NonNull CameraDevice cameraDevice, @NonNull ImageReader imageReader, @NonNull Surface previewSurface) {
-        return Observable.create(subscriber -> {
+        return Observable.create(source -> {
             try {
                 Log.d(TAG, "\tcreateCaptureSession");
                 List<Surface> outputs = Arrays.asList(previewSurface, imageReader.getSurface());
@@ -88,31 +71,31 @@ public class CameraRxWrapper {
                     @Override
                     public void onConfigured(@NonNull CameraCaptureSession session) {
                         Log.d(TAG, "\tcreateCaptureSession - onConfigured");
-                        if (!subscriber.isUnsubscribed()) {
-                            subscriber.onNext(session);
+                        if (!source.isDisposed()) {
+                            source.onNext(session);
                         }
                     }
 
                     @Override
                     public void onConfigureFailed(@NonNull CameraCaptureSession session) {
                         Log.d(TAG, "\tcreateCaptureSession - onConfigureFailed");
-                        if (!subscriber.isUnsubscribed()) {
-                            subscriber.onError(new CameraCaptureSessionException());
+                        if (!source.isDisposed()) {
+                            source.onError(new CameraCaptureSessionException());
                         }
                     }
 
                     @Override
                     public void onClosed(@NonNull CameraCaptureSession session) {
                         Log.d(TAG, "\tcreateCaptureSession - onClosed");
-                        if (!subscriber.isUnsubscribed()) {
-                            subscriber.onNext(null); //todo
+                        if (!source.isDisposed()) {
+                            source.onComplete();
                         }
                     }
                 }, null);
             }
             catch (CameraAccessException e) {
-                if (!subscriber.isUnsubscribed()) {
-                    subscriber.onError(e);
+                if (!source.isDisposed()) {
+                    source.onError(e);
                 }
             }
         });
@@ -126,7 +109,7 @@ public class CameraRxWrapper {
                     @Override
                     public void onOpened(@NonNull CameraDevice cameraDevice) {
                         Log.d(TAG, "\topenCamera - onOpened");
-                        if (!subscriber.isUnsubscribed()) {
+                        if (!subscriber.isDisposed()) {
                             subscriber.onNext(cameraDevice);
                         }
                     }
@@ -134,14 +117,14 @@ public class CameraRxWrapper {
                     @Override
                     public void onClosed(@NonNull CameraDevice cameraDevice) {
                         Log.d(TAG, "\topenCamera - onClosed");
-                        if (!subscriber.isUnsubscribed()) {
-                            subscriber.onNext(null); //todo
+                        if (!subscriber.isDisposed()) {
+                            subscriber.onComplete();
                         }
                     }
 
                     @Override
                     public void onDisconnected(@NonNull CameraDevice camera) {
-                        if (!subscriber.isUnsubscribed()) {
+                        if (!subscriber.isDisposed()) {
                             subscriber.onError(new CameraDisconnectedException());
                         }
                     }
@@ -149,7 +132,7 @@ public class CameraRxWrapper {
                     @Override
                     public void onError(@NonNull CameraDevice camera, int error) {
                         Log.d(TAG, "\topenCamera - onError");
-                        if (!subscriber.isUnsubscribed()) {
+                        if (!subscriber.isDisposed()) {
                             subscriber.onError(new OpenCameraException(OpenCameraException.Reason.getReason(error)));
                         }
                     }
@@ -174,84 +157,6 @@ public class CameraRxWrapper {
     }
 
     public static class CameraDisconnectedException extends Exception {
-    }
-
-    private static void dumpResult(String tag, CaptureResult result) {
-        List<CaptureResult.Key<?>> keys = result.getKeys();
-        for (CaptureResult.Key<?> key : keys) {
-            Object value = result.get(key);
-            if (value != null) {
-                Log.d("MyLogger", "!!!\t" + tag + "\t" + key + "\t" + value);
-            }
-        }
-    }
-
-    private static void dumpRequest(CaptureRequest request) {
-        List<CaptureRequest.Key<?>> keys = request.getKeys();
-        for (CaptureRequest.Key<?> key : keys) {
-            Object value = request.get(key);
-            if (value != null) {
-                Log.d("MyLogger", "!!!\t" + request + "\t" + key + "\t" + value);
-            }
-        }
-    }
-
-    private static class MyLogger extends CameraCaptureSession.CaptureCallback {
-        private final CameraCaptureSession.CaptureCallback mCallback;
-
-        private MyLogger(CameraCaptureSession.CaptureCallback callback) {
-            mCallback = callback;
-        }
-
-        private int hasProgressed = 0;
-        private static final int PROGRESSED_LIMIT = 10;
-        private int hasCompleted = 0;
-
-        @Override
-        public void onCaptureStarted(CameraCaptureSession session, CaptureRequest request,
-                                     long timestamp, long frameNumber) {
-            mCallback.onCaptureStarted(session, request, timestamp, frameNumber);
-        }
-
-        @Override
-        public void onCaptureProgressed(CameraCaptureSession session, CaptureRequest request,
-                                        CaptureResult partialResult) {
-            if (hasProgressed < PROGRESSED_LIMIT) {
-                dumpResult("progress \t#" + hasProgressed + "\t for " + request, partialResult);
-                hasProgressed++;
-            }
-
-            mCallback.onCaptureProgressed(session, request,
-                partialResult);
-        }
-
-        @Override
-        public void onCaptureCompleted(CameraCaptureSession session, CaptureRequest request,
-                                       TotalCaptureResult result) {
-            if (hasCompleted < PROGRESSED_LIMIT) {
-                dumpResult("result \t#" + hasCompleted + "\t for " + request, result);
-                hasCompleted++;
-            }
-            mCallback.onCaptureCompleted(session, request, result);
-        }
-
-        @Override
-        public void onCaptureFailed(CameraCaptureSession session, CaptureRequest request,
-                                    CaptureFailure failure) {
-            mCallback.onCaptureFailed(session, request, failure);
-        }
-
-        @Override
-        public void onCaptureSequenceCompleted(CameraCaptureSession session, int sequenceId,
-                                               long frameNumber) {
-            mCallback.onCaptureSequenceCompleted(session,
-                sequenceId, frameNumber);
-        }
-
-        @Override
-        public void onCaptureSequenceAborted(CameraCaptureSession session, int sequenceId) {
-            mCallback.onCaptureSequenceAborted(session, sequenceId);
-        }
     }
 
 

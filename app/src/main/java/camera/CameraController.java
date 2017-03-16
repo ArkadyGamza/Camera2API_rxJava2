@@ -26,12 +26,9 @@ import android.view.WindowManager;
 
 import java.io.File;
 
-import rx.Observable;
-import rx.Single;
-import rx.android.schedulers.AndroidSchedulers;
-import rx.schedulers.Schedulers;
-import rx.subjects.PublishSubject;
-import rx.subscriptions.CompositeSubscription;
+import io.reactivex.Observable;
+import io.reactivex.subjects.PublishSubject;
+
 
 @TargetApi(21)
 public class CameraController {
@@ -256,7 +253,7 @@ public class CameraController {
 
         //this emits state with non-null camera device when camera is opened, and emits camera with null device when it's closed
         //todo change to single
-        Observable<CameraDevice> cameraDeviceObservable = mOnSurfaceTextureAvailable.asObservable()
+        Observable<CameraDevice> cameraDeviceObservable = mOnSurfaceTextureAvailable
             .first()
             .doOnNext(this::setupSurface)
             .doOnNext(s -> initImageReader())
