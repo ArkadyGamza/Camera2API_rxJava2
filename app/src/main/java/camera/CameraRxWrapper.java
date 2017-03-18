@@ -17,8 +17,8 @@ import android.view.Surface;
 import java.util.Arrays;
 import java.util.List;
 
-import io.reactivex.Observable;
-import io.reactivex.ObservableEmitter;
+import io.reactivex.Maybe;
+import io.reactivex.MaybeEmitter;
 
 /**
  * Helper class, creates Observables from camera async methods.
@@ -28,24 +28,24 @@ public class CameraRxWrapper {
 
     private static final String TAG = CameraRxWrapper.class.getName();
 
-    static Observable<CaptureResult> fromCapture(@NonNull CameraCaptureSession captureSession, @NonNull CaptureRequest request) {
-        return Observable
+    static Maybe<CaptureResult> fromCapture(@NonNull CameraCaptureSession captureSession, @NonNull CaptureRequest request) {
+        return Maybe
             .create(source -> captureSession.capture(request, getSessionListener(source), null));
     }
 
-    static Observable<CaptureResult> fromSetRepeatingRequest(@NonNull CameraCaptureSession captureSession, @NonNull CaptureRequest request) {
-        return Observable
+    static Maybe<CaptureResult> fromSetRepeatingRequest(@NonNull CameraCaptureSession captureSession, @NonNull CaptureRequest request) {
+        return Maybe
             .create(source -> captureSession.setRepeatingRequest(request, getSessionListener(source), null));
     }
 
     @NonNull
-    private static CameraCaptureSession.CaptureCallback getSessionListener(final ObservableEmitter<CaptureResult> source) {
+    private static CameraCaptureSession.CaptureCallback getSessionListener(final MaybeEmitter<CaptureResult> source) {
         return new CameraCaptureSession.CaptureCallback() {
             @Override
             public void onCaptureCompleted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
                 super.onCaptureCompleted(session, request, result);
                 if (!source.isDisposed()) {
-                    source.onNext(result);
+                    source.onSuccess(result);
                     source.onComplete();
                 }
             }
@@ -61,10 +61,9 @@ public class CameraRxWrapper {
     }
 
     @NonNull
-    public static Observable<CameraCaptureSession> createCaptureSession(
+    public static Maybe<CameraCaptureSession> createCaptureSession(
         @NonNull CameraDevice cameraDevice, @NonNull ImageReader imageReader, @NonNull Surface previewSurface) {
-        return Observable.create(source -> {
-            try {
+        return Maybe.create(source -> {
                 Log.d(TAG, "\tcreateCaptureSession");
                 List<Surface> outputs = Arrays.asList(previewSurface, imageReader.getSurface());
                 cameraDevice.createCaptureSession(outputs, new CameraCaptureSession.StateCallback() {
@@ -72,7 +71,7 @@ public class CameraRxWrapper {
                     public void onConfigured(@NonNull CameraCaptureSession session) {
                         Log.d(TAG, "\tcreateCaptureSession - onConfigured");
                         if (!source.isDisposed()) {
-                            source.onNext(session);
+                            source.onSuccess(session);
                         }
                     }
 
@@ -92,25 +91,18 @@ public class CameraRxWrapper {
                         }
                     }
                 }, null);
-            }
-            catch (CameraAccessException e) {
-                if (!source.isDisposed()) {
-                    source.onError(e);
-                }
-            }
         });
     }
 
-    public static Observable<CameraDevice> openCamera(@NonNull String cameraId, @NonNull CameraManager cameraManager) {
-        return Observable.create(subscriber -> {
-            try {
+    public static Maybe<CameraDevice> openCamera(@NonNull String cameraId, @NonNull CameraManager cameraManager) {
+        return Maybe.create(subscriber -> {
                 Log.d(TAG, "\topenCamera");
                 cameraManager.openCamera(cameraId, new CameraDevice.StateCallback() {
                     @Override
                     public void onOpened(@NonNull CameraDevice cameraDevice) {
                         Log.d(TAG, "\topenCamera - onOpened");
                         if (!subscriber.isDisposed()) {
-                            subscriber.onNext(cameraDevice);
+                            subscriber.onSuccess(cameraDevice);
                         }
                     }
 
@@ -137,10 +129,6 @@ public class CameraRxWrapper {
                         }
                     }
                 }, null);
-            }
-            catch (CameraAccessException e) {
-                subscriber.onError(e);
-            }
         });
 
     }

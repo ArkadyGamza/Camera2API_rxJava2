@@ -1,13 +1,14 @@
 package camera;
 
+import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CaptureResult;
 
 class CaptureResultParams {
-    final CameraCaptureSessionParams mCameraCaptureSessionParams;
-    final CaptureResult mCaptureResult;
+    final CameraCaptureSession cameraCaptureSession;
+    final CaptureResult captureResult;
 
-    CaptureResultParams(CameraCaptureSessionParams cameraCaptureSessionParams, CaptureResult captureResult) {
-        mCameraCaptureSessionParams = cameraCaptureSessionParams;
-        mCaptureResult = captureResult;
+    CaptureResultParams(CameraCaptureSession cameraCaptureSession, CaptureResult captureResult) {
+        this.cameraCaptureSession = cameraCaptureSession;
+        this.captureResult = captureResult;
     }
 }

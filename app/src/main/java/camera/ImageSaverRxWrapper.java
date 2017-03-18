@@ -9,9 +9,9 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.nio.channels.FileChannel;
 
-import rx.Observable;
-import rx.Single;
-import rx.subscriptions.Subscriptions;
+import io.reactivex.Observable;
+import io.reactivex.Single;
+
 
 /**
  * Saves a JPEG {@link Image} into the specified {@link File}.
@@ -36,12 +36,12 @@ class ImageSaverRxWrapper {
         return Observable.create(subscriber -> {
 
             ImageReader.OnImageAvailableListener listener = reader -> {
-                if (!subscriber.isUnsubscribed()) {
+                if (!subscriber.isDisposed()) {
                     subscriber.onNext(reader);
                 }
             };
             imageReader.setOnImageAvailableListener(listener, null);
-            subscriber.add(Subscriptions.create(() -> imageReader.setOnImageAvailableListener(null, null))); //remove listener on unsubscribe
+            subscriber.setCancellable(() -> imageReader.setOnImageAvailableListener(null, null)); //remove listener on unsubscribe
         });
     }
 }

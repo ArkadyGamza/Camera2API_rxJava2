@@ -11,9 +11,9 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-import rx.Observable;
-import rx.Single;
-import rx.android.schedulers.AndroidSchedulers;
+import io.reactivex.Observable;
+import io.reactivex.Single;
+import io.reactivex.android.schedulers.AndroidSchedulers;
 
 @TargetApi(21)
 class ConvergeWaiter {
@@ -44,12 +44,13 @@ class ConvergeWaiter {
         builder.set(mRequestTriggerKey, mRequestTriggerStartValue);
         CaptureRequest triggerRequest = builder.build();
 
-        Observable<CaptureResult> triggerObservable = CameraRxWrapper.fromCapture(captureResultParams.mCameraCaptureSessionParams.cameraCaptureSession, triggerRequest);
-        Observable<CaptureResult> previewObservable = CameraRxWrapper.fromSetRepeatingRequest(captureResultParams.mCameraCaptureSessionParams.cameraCaptureSession, previewRequest);
+        Observable<CaptureResult> triggerObservable = CameraRxWrapper.fromCapture(captureResultParams.cameraCaptureSession, triggerRequest).toObservable();
+        Observable<CaptureResult> previewObservable = CameraRxWrapper.fromSetRepeatingRequest(captureResultParams.cameraCaptureSession, previewRequest).toObservable();
         RequestStateMachine requestStateMachine = new RequestStateMachine();
         Observable<CaptureResultParams> convergeObservable = Observable
             .merge(previewObservable, triggerObservable) //order matters
-            .first(result -> filterWithStateMachine(result, requestStateMachine))
+            .filter(result -> filterWithStateMachine(result, requestStateMachine))
+            .firstElement().toObservable()
             .map(result -> captureResultParams);
 
         Observable<CaptureResultParams> timeOutObservable = Observable
@@ -59,7 +60,7 @@ class ConvergeWaiter {
 
         return Observable
             .merge(convergeObservable, timeOutObservable)
-            .first()
+            .firstElement()
             .toSingle();
     }
 

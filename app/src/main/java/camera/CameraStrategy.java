@@ -15,7 +15,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
-import rx.Observable;
+import io.reactivex.Observable;
 
 /**
  * Makes decisions of sizes used in camera config and selects camera.
@@ -88,11 +88,10 @@ class CameraStrategy {
         if (outputSizes.length == 0) {
             throw new IllegalStateException("No supported sizes for SurfaceTexture");
         }
-        List<Size> filteredOutputSizes = Observable.from(outputSizes)
+        List<Size> filteredOutputSizes = Observable.fromArray(outputSizes)
             .filter(size -> size.getWidth() <= MAX_PREVIEW_WIDTH && size.getHeight() <= MAX_PREVIEW_HEIGHT)
             .toList()
-            .toBlocking()
-            .single();
+            .blockingGet();
 
         if (filteredOutputSizes.size() == 0) {
             return outputSizes[0];
@@ -110,12 +109,11 @@ class CameraStrategy {
         if (outputSizes.length == 0) {
             throw new IllegalStateException("No supported sizes for JPEG");
         }
-        List<Size> filteredOutputSizes = Observable.from(outputSizes)
+        List<Size> filteredOutputSizes = Observable.fromArray(outputSizes)
             .filter(size -> size.getWidth() == size.getHeight() * previewSize.getWidth() / previewSize.getHeight())
             .filter(size -> size.getWidth() <= MAX_STILL_IMAGE_WIDTH && size.getHeight() <= MAX_STILL_IMAGE_HEIGHT)
             .toList()
-            .toBlocking()
-            .single();
+            .blockingGet();
 
         if (filteredOutputSizes.size() == 0) {
             return outputSizes[0];
