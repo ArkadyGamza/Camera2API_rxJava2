@@ -100,11 +100,11 @@ public class CameraController {
     }
 
     public void takePhoto() {
-        mOnShutterClick.onNext(null);
+        mOnShutterClick.onNext(this);
     }
 
     public void switchCamera() {
-        mOnSwitchCamera.onNext(null);
+        mOnSwitchCamera.onNext(this);
     }
 
     public AndroidLifecycle getLifecycle() {
@@ -216,7 +216,7 @@ public class CameraController {
         @Override
         public void onPause() {
             Log.d(TAG, "\tonPause");
-            mOnPauseSubject.onNext(null);
+            mOnPauseSubject.onNext(this);
         }
 
         @Override
