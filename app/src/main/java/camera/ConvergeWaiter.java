@@ -44,12 +44,12 @@ class ConvergeWaiter {
         builder.set(mRequestTriggerKey, mRequestTriggerStartValue);
         CaptureRequest triggerRequest = builder.build();
 
-        Observable<CaptureResult> triggerObservable = CameraRxWrapper.fromCapture(captureResultParams.cameraCaptureSession, triggerRequest).toObservable();
-        Observable<CaptureResult> previewObservable = CameraRxWrapper.fromSetRepeatingRequest(captureResultParams.cameraCaptureSession, previewRequest).toObservable();
+        Observable<CaptureResultParams> triggerObservable = CameraRxWrapper.fromCapture(captureResultParams.cameraCaptureSession, triggerRequest).toObservable();
+        Observable<CaptureResultParams> previewObservable = CameraRxWrapper.fromSetRepeatingRequest(captureResultParams.cameraCaptureSession, previewRequest).toObservable();
         RequestStateMachine requestStateMachine = new RequestStateMachine();
         Observable<CaptureResultParams> convergeObservable = Observable
             .merge(previewObservable, triggerObservable) //order matters
-            .filter(result -> filterWithStateMachine(result, requestStateMachine))
+            .filter(resultParams -> filterWithStateMachine(resultParams.captureResult, requestStateMachine))
             .firstElement().toObservable()
             .map(result -> captureResultParams);
 

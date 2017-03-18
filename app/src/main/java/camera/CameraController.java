@@ -377,8 +377,7 @@ public class CameraController {
         Log.d(TAG, "\tstartPreview");
         return Observable
             .fromCallable(() -> createPreviewBuilder(cameraCaptureSession, mSurfaceParams.previewSurface))
-            .flatMap(previewBuilder -> CameraRxWrapper.fromSetRepeatingRequest(cameraCaptureSession, previewBuilder.build()).toObservable())
-            .map(captureResult -> new CaptureResultParams(cameraCaptureSession, captureResult));
+            .flatMap(previewBuilder -> CameraRxWrapper.fromSetRepeatingRequest(cameraCaptureSession, previewBuilder.build()).toObservable());
     }
 
     private static boolean contains(int[] modes, int mode) {
@@ -419,8 +418,7 @@ public class CameraController {
         Log.d(TAG, "\tcaptureStillPicture");
         return Observable
             .fromCallable(() -> createStillPictureBuilder(cameraCaptureSession.getDevice()))
-            .flatMap(builder -> CameraRxWrapper.fromCapture(cameraCaptureSession, builder.build()).toObservable())
-            .map(result -> new CaptureResultParams(cameraCaptureSession, result));
+            .flatMap(builder -> CameraRxWrapper.fromCapture(cameraCaptureSession, builder.build()).toObservable());
     }
 
     @NonNull

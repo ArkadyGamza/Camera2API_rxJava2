@@ -28,24 +28,24 @@ public class CameraRxWrapper {
 
     private static final String TAG = CameraRxWrapper.class.getName();
 
-    static Maybe<CaptureResult> fromCapture(@NonNull CameraCaptureSession captureSession, @NonNull CaptureRequest request) {
+    static Maybe<CaptureResultParams> fromCapture(@NonNull CameraCaptureSession captureSession, @NonNull CaptureRequest request) {
         return Maybe
             .create(source -> captureSession.capture(request, getSessionListener(source), null));
     }
 
-    static Maybe<CaptureResult> fromSetRepeatingRequest(@NonNull CameraCaptureSession captureSession, @NonNull CaptureRequest request) {
+    static Maybe<CaptureResultParams> fromSetRepeatingRequest(@NonNull CameraCaptureSession captureSession, @NonNull CaptureRequest request) {
         return Maybe
             .create(source -> captureSession.setRepeatingRequest(request, getSessionListener(source), null));
     }
 
     @NonNull
-    private static CameraCaptureSession.CaptureCallback getSessionListener(final MaybeEmitter<CaptureResult> source) {
+    private static CameraCaptureSession.CaptureCallback getSessionListener(final MaybeEmitter<CaptureResultParams> source) {
         return new CameraCaptureSession.CaptureCallback() {
             @Override
             public void onCaptureCompleted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
                 super.onCaptureCompleted(session, request, result);
                 if (!source.isDisposed()) {
-                    source.onSuccess(result);
+                    source.onSuccess(new CaptureResultParams(session, result));
                     source.onComplete();
                 }
             }
