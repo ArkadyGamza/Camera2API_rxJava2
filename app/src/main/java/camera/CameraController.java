@@ -21,7 +21,6 @@ import android.util.Log;
 import android.util.Size;
 import android.view.Surface;
 import android.view.TextureView;
-import android.view.View;
 import android.view.WindowManager;
 
 import java.io.File;
@@ -197,10 +196,6 @@ public class CameraController {
         public void onResume() {
             Log.d(TAG, "\tonResume");
 
-            if (mTextureView == null) {
-                return;
-            }
-
             subscribe();
 
             // When the screen is turned off and turned back on, the SurfaceTexture is already
@@ -212,6 +207,7 @@ public class CameraController {
                 mOnSurfaceTextureAvailable.onNext(mTextureView.getSurfaceTexture());
             }
         }
+
 
         @Override
         public void onPause() {
@@ -272,7 +268,6 @@ public class CameraController {
 
         Observable<CaptureResultParams> previewObservable = cameraCaptureSessionObservable
             .flatMap(cameraCaptureSession -> startPreview(cameraCaptureSession).firstElement().toObservable())
-            .doOnNext(state -> mTextureView.setVisibility(View.VISIBLE))
             .share();
 
         mCompositeDisposable.add(
@@ -287,30 +282,19 @@ public class CameraController {
                 }, this::onError)
         );
 
-//        mCompositeDisposable.add(
-//            Observable.combineLatest(previewObservable, mOnSwitchCamera.firstElement().toObservable(), (captureResultParams, o) -> captureResultParams)
-//                .firstElement()
-//                .doOnSuccess(state -> mTextureView.setVisibility(View.INVISIBLE))
-//                .doOnSuccess(captureResultParams -> closeSession(captureResultParams.mCameraCaptureSession))
-//                .flatMap(captureResultParams -> cameraCaptureSessionObservable)  //waiting for real close
-//                .doOnComplete(cameraCaptureSessionParams -> closeCamera(cameraCaptureSessionParams.g))
-//                .flatMap(cameraCaptureSessionParams -> cameraDeviceObservable
-//                    .filter(cameraDevice -> cameraDevice == null) //wait for real close
-//                )
-//                .doOnNext(cameraDevice -> closeImageReader())
-//                .subscribe(cameraDevice -> switchCameraInternal(), this::onError)
-//        );
+        mCompositeDisposable.add(
+            Observable.combineLatest(previewObservable, mOnSwitchCamera.firstElement().toObservable(), (captureResultParams, o) -> captureResultParams)
+                .firstElement().toObservable()
+                .flatMap(captureResultParams -> closeSession(captureResultParams.cameraCaptureSession, cameraCaptureSessionObservable))
+                .flatMap(cameraCaptureSessionParams -> closeCamera(cameraCaptureSessionParams.getDevice(), cameraDeviceObservable))
+                .doOnNext(cameraDevice -> closeImageReader())
+                .subscribe(cameraDevice -> switchCameraInternal(), this::onError)
+        );
 
         mCompositeDisposable.add(Observable.combineLatest(previewObservable, mOnPauseSubject.firstElement().toObservable(), (state, o) -> state)
-            .doOnNext(state -> mTextureView.setVisibility(View.INVISIBLE))
-            .doOnNext(captureResultParams -> closeSession(captureResultParams.cameraCaptureSession))
-            .flatMap(captureResultParams -> cameraCaptureSessionObservable
-                .filter(cameraCaptureSession -> cameraCaptureSession == null)  //waiting for real close
-            )
-            .doOnNext(cameraCaptureSession -> closeCamera(cameraCaptureSession.getDevice()))
-            .flatMap(cameraCaptureSession -> cameraDeviceObservable
-                .filter(cameraDevice -> cameraDevice == null) //wait for real close
-            )
+            .doOnNext(captureResultParams -> closeSession(captureResultParams.cameraCaptureSession, cameraCaptureSessionObservable))
+            .flatMap(captureResultParams -> closeSession(captureResultParams.cameraCaptureSession, cameraCaptureSessionObservable))
+            .flatMap(cameraCaptureSessionParams -> closeCamera(cameraCaptureSessionParams.getDevice(), cameraDeviceObservable))
             .doOnNext(cameraDevice -> closeImageReader())
             .subscribe(state -> unsubscribe(), this::onError)
         );
@@ -481,18 +465,19 @@ public class CameraController {
         }
     }
 
-    private void closeSession(@Nullable CameraCaptureSession cameraCaptureSession) {
+    private Observable<CameraCaptureSession> closeSession(@NonNull CameraCaptureSession cameraCaptureSession, @NonNull Observable<CameraCaptureSession> cameraCaptureSessionObservable) {
         Log.d(TAG, "\tcloseSession");
-        if (cameraCaptureSession != null) {
-            cameraCaptureSession.close();
-        }
+        //wait until the capture session observable completes
+        cameraCaptureSession.close();
+        cameraCaptureSessionObservable.blockingSubscribe();
+        return Observable.just(cameraCaptureSession);
     }
 
-    private void closeCamera(@Nullable CameraDevice cameraDevice) {
+    private Observable<CameraDevice> closeCamera(@NonNull CameraDevice cameraDevice, @NonNull Observable<CameraDevice> cameraDeviceObservable) {
         Log.d(TAG, "\tcloseCamera");
-        if (cameraDevice != null) {
-            cameraDevice.close();
-        }
+        cameraDevice.close();
+        cameraDeviceObservable.blockingSubscribe();
+        return Observable.just(cameraDevice);
     }
 
     private void closeImageReader() {
