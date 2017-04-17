@@ -298,13 +298,14 @@ public class CameraController {
                 CaptureRequest.Builder previewBuilder = createPreviewBuilder(cameraCaptureSession, mSurfaceParams.previewSurface);
                 return CameraRxWrapper.fromSetRepeatingRequest(cameraCaptureSession, previewBuilder.build());
             })
-            .doOnNext(o -> Log.d(TAG, "\tpreviewObservable emitted"))
+
             .share();
 
         // react to shutter button
 
         mCompositeDisposable.add(
             Observable.combineLatest(previewObservable, mOnShutterClick, (captureSessionData, o) -> captureSessionData)
+                .firstElement().toObservable()
                 .doOnNext(o -> Log.d(TAG, "\ton shutter click"))
                 .doOnNext(state -> mCallback.onFocusStarted())
                 .flatMap(this::waitForAf)
@@ -319,9 +320,9 @@ public class CameraController {
         // react to switch camera button
 
         mCompositeDisposable.add(
-            Observable.combineLatest(previewObservable, mOnSwitchCameraClick.firstElement().toObservable(), (captureSessionData, o) -> captureSessionData)
-                .doOnNext(o -> Log.d(TAG, "\ton switch camera click"))
+            Observable.combineLatest(previewObservable, mOnSwitchCameraClick, (captureSessionData, o) -> captureSessionData)
                 .firstElement().toObservable()
+                .doOnNext(o -> Log.d(TAG, "\ton switch camera click"))
                 .doOnNext(captureSessionData -> captureSessionData.session.close())
                 .flatMap(captureSessionData -> captureSessionClosedObservable)
                 .doOnNext(cameraCaptureSession -> cameraCaptureSession.getDevice().close())
@@ -332,9 +333,9 @@ public class CameraController {
 
         // react to onPause event
 
-        mCompositeDisposable.add(Observable.combineLatest(previewObservable, mOnPauseSubject.firstElement().toObservable(), (state, o) -> state)
-            .doOnNext(o -> Log.d(TAG, "\ton pause"))
+        mCompositeDisposable.add(Observable.combineLatest(previewObservable, mOnPauseSubject, (state, o) -> state)
             .firstElement().toObservable()
+            .doOnNext(o -> Log.d(TAG, "\ton pause"))
             .doOnNext(captureSessionData -> captureSessionData.session.close())
             .flatMap(captureSessionData -> captureSessionClosedObservable)
             .doOnNext(cameraCaptureSession -> cameraCaptureSession.getDevice().close())

@@ -209,6 +209,9 @@ public class CameraRxWrapper {
         }
     }
 
+    /**
+     * Warning, emits a lot!
+     */
     static Observable<CaptureSessionData> fromSetRepeatingRequest(@NonNull CameraCaptureSession captureSession, @NonNull CaptureRequest request) {
         return Observable
             .create(observableEmitter -> captureSession.setRepeatingRequest(request, createCaptureCallback(observableEmitter), null));
