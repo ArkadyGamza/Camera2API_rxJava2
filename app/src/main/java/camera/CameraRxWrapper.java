@@ -1,17 +1,16 @@
 package camera;
 
 import android.annotation.TargetApi;
-import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CaptureFailure;
 import android.hardware.camera2.CaptureRequest;
-import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.TotalCaptureResult;
 import android.media.ImageReader;
 import android.support.annotation.NonNull;
 import android.util.Log;
+import android.util.Pair;
 import android.view.Surface;
 
 import java.util.Arrays;
@@ -19,6 +18,7 @@ import java.util.List;
 
 import io.reactivex.Maybe;
 import io.reactivex.MaybeEmitter;
+import io.reactivex.Observable;
 
 /**
  * Helper class, creates Observables from camera async methods.
@@ -27,6 +27,52 @@ import io.reactivex.MaybeEmitter;
 public class CameraRxWrapper {
 
     private static final String TAG = CameraRxWrapper.class.getName();
+
+    public enum OpenCameraEvents {
+        ON_OPENED,
+        ON_CLOSED,
+        ON_DISCONNECTED
+    }
+
+    public static Observable<Pair<OpenCameraEvents,CameraDevice>> openCamera(@NonNull String cameraId, @NonNull CameraManager cameraManager) {
+        return Observable.create(observableEmitter -> {
+            Log.d(TAG, "\topenCamera");
+            cameraManager.openCamera(cameraId, new CameraDevice.StateCallback() {
+                @Override
+                public void onOpened(@NonNull CameraDevice cameraDevice) {
+                    Log.d(TAG, "\topenCamera - onOpened");
+                    if (!observableEmitter.isDisposed()) {
+                        observableEmitter.onNext(new Pair<>(OpenCameraEvents.ON_OPENED, cameraDevice));
+                    }
+                }
+
+                @Override
+                public void onClosed(@NonNull CameraDevice cameraDevice) {
+                    Log.d(TAG, "\topenCamera - onClosed");
+                    if (!observableEmitter.isDisposed()) {
+                        observableEmitter.onNext(new Pair<>(OpenCameraEvents.ON_CLOSED, cameraDevice));
+                        observableEmitter.onComplete();
+                    }
+                }
+
+                @Override
+                public void onDisconnected(@NonNull CameraDevice cameraDevice) {
+                    if (!observableEmitter.isDisposed()) {
+                        observableEmitter.onNext(new Pair<>(OpenCameraEvents.ON_DISCONNECTED, cameraDevice));
+                        observableEmitter.onComplete();
+                    }
+                }
+
+                @Override
+                public void onError(@NonNull CameraDevice camera, int error) {
+                    Log.d(TAG, "\topenCamera - onError");
+                    if (!observableEmitter.isDisposed()) {
+                        observableEmitter.onError(new OpenCameraException(OpenCameraException.Reason.getReason(error)));
+                    }
+                }
+            }, null);
+        });
+    }
 
     static Maybe<CaptureResultParams> fromCapture(@NonNull CameraCaptureSession captureSession, @NonNull CaptureRequest request) {
         return Maybe
@@ -61,77 +107,42 @@ public class CameraRxWrapper {
     }
 
     @NonNull
-    public static Maybe<CameraCaptureSession> createCaptureSession(
+    public static Observable<CameraCaptureSession> createCaptureSession(
         @NonNull CameraDevice cameraDevice, @NonNull ImageReader imageReader, @NonNull Surface previewSurface) {
-        return Maybe.create(source -> {
-                Log.d(TAG, "\tcreateCaptureSession");
-                List<Surface> outputs = Arrays.asList(previewSurface, imageReader.getSurface());
-                cameraDevice.createCaptureSession(outputs, new CameraCaptureSession.StateCallback() {
-                    @Override
-                    public void onConfigured(@NonNull CameraCaptureSession session) {
-                        Log.d(TAG, "\tcreateCaptureSession - onConfigured");
-                        if (!source.isDisposed()) {
-                            source.onSuccess(session);
-                        }
+        return Observable.create(source -> {
+            Log.d(TAG, "\tcreateCaptureSession");
+            List<Surface> outputs = Arrays.asList(previewSurface, imageReader.getSurface());
+            source.setCancellable(() -> Log.d(TAG, "\tcreateCaptureSession - unsubscribed"));
+            cameraDevice.createCaptureSession(outputs, new CameraCaptureSession.StateCallback() {
+                @Override
+                public void onConfigured(@NonNull CameraCaptureSession session) {
+                    Log.d(TAG, "\tcreateCaptureSession - onConfigured");
+                    if (!source.isDisposed()) {
+                        source.onNext(session);
                     }
+                }
 
-                    @Override
-                    public void onConfigureFailed(@NonNull CameraCaptureSession session) {
-                        Log.d(TAG, "\tcreateCaptureSession - onConfigureFailed");
-                        if (!source.isDisposed()) {
-                            source.onError(new CameraCaptureSessionException());
-                        }
+                @Override
+                public void onConfigureFailed(@NonNull CameraCaptureSession session) {
+                    Log.d(TAG, "\tcreateCaptureSession - onConfigureFailed");
+                    if (!source.isDisposed()) {
+                        source.onError(new CameraCaptureSessionException());
                     }
+                }
 
-                    @Override
-                    public void onClosed(@NonNull CameraCaptureSession session) {
-                        Log.d(TAG, "\tcreateCaptureSession - onClosed");
-                        if (!source.isDisposed()) {
-                            source.onComplete();
-                        }
+                @Override
+                public void onClosed(@NonNull CameraCaptureSession session) {
+                    Log.d(TAG, "\tcreateCaptureSession - onClosed " + Thread.currentThread().getName());
+                    if (!source.isDisposed()) {
+                        Log.d(TAG, "\tcreateCaptureSession - onClosed calling on complete");
+                        source.onComplete();
                     }
-                }, null);
+                }
+            }, null);
         });
     }
 
-    public static Maybe<CameraDevice> openCamera(@NonNull String cameraId, @NonNull CameraManager cameraManager) {
-        return Maybe.create(subscriber -> {
-                Log.d(TAG, "\topenCamera");
-                cameraManager.openCamera(cameraId, new CameraDevice.StateCallback() {
-                    @Override
-                    public void onOpened(@NonNull CameraDevice cameraDevice) {
-                        Log.d(TAG, "\topenCamera - onOpened");
-                        if (!subscriber.isDisposed()) {
-                            subscriber.onSuccess(cameraDevice);
-                        }
-                    }
 
-                    @Override
-                    public void onClosed(@NonNull CameraDevice cameraDevice) {
-                        Log.d(TAG, "\topenCamera - onClosed");
-                        if (!subscriber.isDisposed()) {
-                            subscriber.onComplete();
-                        }
-                    }
-
-                    @Override
-                    public void onDisconnected(@NonNull CameraDevice camera) {
-                        if (!subscriber.isDisposed()) {
-                            subscriber.onError(new CameraDisconnectedException());
-                        }
-                    }
-
-                    @Override
-                    public void onError(@NonNull CameraDevice camera, int error) {
-                        Log.d(TAG, "\topenCamera - onError");
-                        if (!subscriber.isDisposed()) {
-                            subscriber.onError(new OpenCameraException(OpenCameraException.Reason.getReason(error)));
-                        }
-                    }
-                }, null);
-        });
-
-    }
 
     public static class CameraCaptureFailedException extends Exception {
         public final CaptureFailure mFailure;
