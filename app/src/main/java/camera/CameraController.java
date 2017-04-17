@@ -82,7 +82,7 @@ public class CameraController {
     private final CompositeDisposable mCompositeDisposable = new CompositeDisposable();
     private final PublishSubject<Object> mOnPauseSubject = PublishSubject.create();
     private final PublishSubject<Object> mOnShutterClick = PublishSubject.create();
-    private final PublishSubject<Object> mOnSwitchCamera = PublishSubject.create();
+    private final PublishSubject<Object> mOnSwitchCameraClick = PublishSubject.create();
     private final PublishSubject<SurfaceTexture> mOnSurfaceTextureAvailable = PublishSubject.create();
     private final ConvergeWaiter mAutoFocusConvergeWaiter = ConvergeWaiter.Factory.createAutoFocusConvergeWaiter();
     private final ConvergeWaiter mAutoExposureConvergeWaiter = ConvergeWaiter.Factory.createAutoExposureConvergeWaiter();
@@ -105,7 +105,7 @@ public class CameraController {
     }
 
     public void switchCamera() {
-        mOnSwitchCamera.onNext(this);
+        mOnSwitchCameraClick.onNext(this);
     }
 
     public AndroidLifecycle getLifecycle() {
@@ -252,6 +252,8 @@ public class CameraController {
     private void subscribe() {
         mCompositeDisposable.clear();
 
+        // open camera
+
         Observable<Pair<CameraRxWrapper.OpenCameraEvents, CameraDevice>> cameraDeviceObservable = mOnSurfaceTextureAvailable
             .firstElement()
             .doAfterSuccess(this::setupSurface)
@@ -270,20 +272,37 @@ public class CameraController {
             .map(pair -> pair.second)
             .share();
 
-        Observable<CameraCaptureSession> cameraCaptureSessionObservable = openCameraObservable
+        // create capture session
+
+        Observable<Pair<CameraRxWrapper.CreateCaptureSessionEvents, CameraCaptureSession>> createCaptureSessionObservable = openCameraObservable
             .flatMap(cameraDevice -> CameraRxWrapper
                 .createCaptureSession(cameraDevice, mImageReader, mSurfaceParams.previewSurface)
             )
-            .doOnNext(o -> Log.d(TAG, "cameraCaptureSessionObservable next = " + o))
-            .doOnComplete(() -> Log.d(TAG, "cameraCaptureSessionObservable completed "))
             .share();
 
-        Observable<CaptureResultParams> previewObservable = cameraCaptureSessionObservable
-            .flatMap(cameraCaptureSession -> startPreview(cameraCaptureSession).firstElement().toObservable())
+        Observable<CameraCaptureSession> captureSessionConfiguredObservable = createCaptureSessionObservable
+            .filter(pair -> pair.first == CameraRxWrapper.CreateCaptureSessionEvents.ON_CONFIGURED)
+            .map(pair -> pair.second)
             .share();
+
+        Observable<CameraCaptureSession> captureSessionClosedObservable = createCaptureSessionObservable
+            .filter(pair -> pair.first == CameraRxWrapper.CreateCaptureSessionEvents.ON_CLOSED)
+            .map(pair -> pair.second)
+            .share();
+
+        // start preview
+
+        Observable<CaptureResultParams> previewObservable = captureSessionConfiguredObservable
+            .flatMap(cameraCaptureSession -> startPreview(cameraCaptureSession).firstElement().toObservable())
+            .doOnNext(o -> Log.d(TAG, "\tpreviewObservable emitted"))
+            .share();
+
+        // react to shutter button
 
         mCompositeDisposable.add(
             Observable.combineLatest(previewObservable, mOnShutterClick, (captureResultParams, o) -> captureResultParams)
+                .doOnNext(o -> Log.d(TAG, "\ton shutter click"))
+                .firstElement().toObservable()
                 .doOnNext(state -> mCallback.onFocusStarted())
                 .flatMap(this::waitForAf)
                 .flatMap(this::waitForAe)
@@ -294,18 +313,27 @@ public class CameraController {
                 }, this::onError)
         );
 
+        // react to switch camera button
+
         mCompositeDisposable.add(
-            Observable.combineLatest(previewObservable, mOnSwitchCamera.firstElement().toObservable(), (captureResultParams, o) -> captureResultParams)
+            Observable.combineLatest(previewObservable, mOnSwitchCameraClick.firstElement().toObservable(), (captureResultParams, o) -> captureResultParams)
+                .doOnNext(o -> Log.d(TAG, "\ton switch camera click"))
                 .firstElement().toObservable()
-                .flatMap(captureResultParams -> closeSessionBlocking(captureResultParams.cameraCaptureSession, cameraCaptureSessionObservable))
+                .doOnNext(captureResultParams -> captureResultParams.cameraCaptureSession.close())
+                .flatMap(captureResultParams -> captureSessionClosedObservable)
                 .doOnNext(cameraCaptureSession -> cameraCaptureSession.getDevice().close())
                 .flatMap(cameraCaptureSession -> closeCameraObservable)
                 .doOnNext(cameraDevice -> closeImageReader())
                 .subscribe(cameraDevice -> switchCameraInternal(), this::onError)
         );
 
+        // react to onPause event
+
         mCompositeDisposable.add(Observable.combineLatest(previewObservable, mOnPauseSubject.firstElement().toObservable(), (state, o) -> state)
-            .flatMap(captureResultParams -> closeSessionBlocking(captureResultParams.cameraCaptureSession, cameraCaptureSessionObservable))
+            .doOnNext(o -> Log.d(TAG, "\ton pause"))
+            .firstElement().toObservable()
+            .doOnNext(captureResultParams -> captureResultParams.cameraCaptureSession.close())
+            .flatMap(captureResultParams -> captureSessionClosedObservable)
             .doOnNext(cameraCaptureSession -> cameraCaptureSession.getDevice().close())
             .flatMap(cameraCaptureSession -> closeCameraObservable)
             .doOnNext(cameraDevice -> closeImageReader())
@@ -486,13 +514,6 @@ public class CameraController {
             .ignoreElements()
             .<CameraCaptureSession>toObservable()
             .switchIfEmpty(Observable.just(cameraCaptureSession));
-    }
-
-    private Observable<CameraDevice> closeCameraBlocking(@NonNull CameraDevice cameraDevice, @NonNull Observable<CameraDevice> cameraDeviceObservable) {
-        Log.d(TAG, "\tcloseCamera");
-        cameraDevice.close();
-        cameraDeviceObservable.blockingSubscribe();
-        return Observable.just(cameraDevice);
     }
 
     private void closeImageReader() {
