@@ -6,6 +6,7 @@ import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CaptureFailure;
 import android.hardware.camera2.CaptureRequest;
+import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.TotalCaptureResult;
 import android.media.ImageReader;
 import android.support.annotation.NonNull;
@@ -16,9 +17,8 @@ import android.view.Surface;
 import java.util.Arrays;
 import java.util.List;
 
-import io.reactivex.Maybe;
-import io.reactivex.MaybeEmitter;
 import io.reactivex.Observable;
+import io.reactivex.ObservableEmitter;
 
 /**
  * Helper class, creates Observables from camera async methods.
@@ -31,7 +31,7 @@ public class CameraRxWrapper {
     /**
      * @see CameraDevice.StateCallback
      */
-    public enum OpenCameraEvents {
+    public enum DeviceStateEvents {
         /**
          * @see CameraDevice.StateCallback#onOpened(CameraDevice)
          */
@@ -46,7 +46,7 @@ public class CameraRxWrapper {
         ON_DISCONNECTED
     }
 
-    public static Observable<Pair<OpenCameraEvents, CameraDevice>> openCamera(
+    public static Observable<Pair<DeviceStateEvents, CameraDevice>> openCamera(
         @NonNull String cameraId,
         @NonNull CameraManager cameraManager
     ) {
@@ -60,7 +60,7 @@ public class CameraRxWrapper {
                 public void onOpened(@NonNull CameraDevice cameraDevice) {
                     Log.d(TAG, "\topenCamera - onOpened");
                     if (!observableEmitter.isDisposed()) {
-                        observableEmitter.onNext(new Pair<>(OpenCameraEvents.ON_OPENED, cameraDevice));
+                        observableEmitter.onNext(new Pair<>(DeviceStateEvents.ON_OPENED, cameraDevice));
                     }
                 }
 
@@ -68,7 +68,7 @@ public class CameraRxWrapper {
                 public void onClosed(@NonNull CameraDevice cameraDevice) {
                     Log.d(TAG, "\topenCamera - onClosed");
                     if (!observableEmitter.isDisposed()) {
-                        observableEmitter.onNext(new Pair<>(OpenCameraEvents.ON_CLOSED, cameraDevice));
+                        observableEmitter.onNext(new Pair<>(DeviceStateEvents.ON_CLOSED, cameraDevice));
                         observableEmitter.onComplete();
                     }
                 }
@@ -76,7 +76,7 @@ public class CameraRxWrapper {
                 @Override
                 public void onDisconnected(@NonNull CameraDevice cameraDevice) {
                     if (!observableEmitter.isDisposed()) {
-                        observableEmitter.onNext(new Pair<>(OpenCameraEvents.ON_DISCONNECTED, cameraDevice));
+                        observableEmitter.onNext(new Pair<>(DeviceStateEvents.ON_DISCONNECTED, cameraDevice));
                         observableEmitter.onComplete();
                     }
                 }
@@ -95,7 +95,7 @@ public class CameraRxWrapper {
     /**
      * @see CameraCaptureSession.StateCallback
      */
-    public enum CreateCaptureSessionEvents {
+    public enum CaptureSessionStateEvents {
         /**
          * @see CameraCaptureSession.StateCallback#onConfigured(CameraCaptureSession)
          */
@@ -119,7 +119,7 @@ public class CameraRxWrapper {
     }
 
     @NonNull
-    public static Observable<Pair<CreateCaptureSessionEvents, CameraCaptureSession>> createCaptureSession(
+    public static Observable<Pair<CaptureSessionStateEvents, CameraCaptureSession>> createCaptureSession(
         @NonNull CameraDevice cameraDevice,
         @NonNull ImageReader imageReader,
         @NonNull Surface previewSurface
@@ -136,7 +136,7 @@ public class CameraRxWrapper {
                 public void onConfigured(@NonNull CameraCaptureSession session) {
                     Log.d(TAG, "\tcreateCaptureSession - onConfigured");
                     if (!observableEmitter.isDisposed()) {
-                        observableEmitter.onNext(new Pair<>(CreateCaptureSessionEvents.ON_CONFIGURED, session));
+                        observableEmitter.onNext(new Pair<>(CaptureSessionStateEvents.ON_CONFIGURED, session));
                     }
                 }
 
@@ -152,7 +152,7 @@ public class CameraRxWrapper {
                 public void onReady(@NonNull CameraCaptureSession session) {
                     Log.d(TAG, "\tcreateCaptureSession - onReady");
                     if (!observableEmitter.isDisposed()) {
-                        observableEmitter.onNext(new Pair<>(CreateCaptureSessionEvents.ON_READY, session));
+                        observableEmitter.onNext(new Pair<>(CaptureSessionStateEvents.ON_READY, session));
                     }
                 }
 
@@ -160,7 +160,7 @@ public class CameraRxWrapper {
                 public void onActive(@NonNull CameraCaptureSession session) {
                     Log.d(TAG, "\tcreateCaptureSession - onActive");
                     if (!observableEmitter.isDisposed()) {
-                        observableEmitter.onNext(new Pair<>(CreateCaptureSessionEvents.ON_ACTIVE, session));
+                        observableEmitter.onNext(new Pair<>(CaptureSessionStateEvents.ON_ACTIVE, session));
                     }
                 }
 
@@ -168,7 +168,7 @@ public class CameraRxWrapper {
                 public void onClosed(@NonNull CameraCaptureSession session) {
                     Log.d(TAG, "\tcreateCaptureSession - onClosed");
                     if (!observableEmitter.isDisposed()) {
-                        observableEmitter.onNext(new Pair<>(CreateCaptureSessionEvents.ON_CLOSED, session));
+                        observableEmitter.onNext(new Pair<>(CaptureSessionStateEvents.ON_CLOSED, session));
                         observableEmitter.onComplete();
                     }
                 }
@@ -177,42 +177,80 @@ public class CameraRxWrapper {
                 public void onSurfacePrepared(@NonNull CameraCaptureSession session, @NonNull Surface surface) {
                     Log.d(TAG, "\tcreateCaptureSession - onSurfacePrepared");
                     if (!observableEmitter.isDisposed()) {
-                        observableEmitter.onNext(new Pair<>(CreateCaptureSessionEvents.ON_SURFACE_PREPARED, session));
+                        observableEmitter.onNext(new Pair<>(CaptureSessionStateEvents.ON_SURFACE_PREPARED, session));
                     }
                 }
             }, null);
         });
     }
 
-
-    static Maybe<CaptureResultParams> fromCapture(@NonNull CameraCaptureSession captureSession, @NonNull CaptureRequest request) {
-        return Maybe
-            .create(source -> captureSession.capture(request, getSessionListener(source), null));
+    /**
+     * @see CameraCaptureSession.CaptureCallback
+     */
+    public enum CaptureSessionEvents {
+        ON_STARTED,
+        ON_PROGRESSED,
+        ON_COMPLETED,
+        ON_SEQUENCE_COMPLETED,
+        ON_SEQUENCE_ABORTED
     }
 
-    static Maybe<CaptureResultParams> fromSetRepeatingRequest(@NonNull CameraCaptureSession captureSession, @NonNull CaptureRequest request) {
-        return Maybe
-            .create(source -> captureSession.setRepeatingRequest(request, getSessionListener(source), null));
+    public static class CaptureSessionData {
+        final CaptureSessionEvents event;
+        final CameraCaptureSession session;
+        final CaptureRequest request;
+        final CaptureResult result;
+
+        CaptureSessionData(CaptureSessionEvents event, CameraCaptureSession session, CaptureRequest request, CaptureResult result) {
+            this.event = event;
+            this.session = session;
+            this.request = request;
+            this.result = result;
+        }
+    }
+
+    static Observable<CaptureSessionData> fromSetRepeatingRequest(@NonNull CameraCaptureSession captureSession, @NonNull CaptureRequest request) {
+        return Observable
+            .create(observableEmitter -> captureSession.setRepeatingRequest(request, createCaptureCallback(observableEmitter), null));
+    }
+
+    static Observable<CaptureSessionData> fromCapture(@NonNull CameraCaptureSession captureSession, @NonNull CaptureRequest request) {
+        return Observable
+            .create(observableEmitter -> captureSession.capture(request, createCaptureCallback(observableEmitter), null));
     }
 
     @NonNull
-    private static CameraCaptureSession.CaptureCallback getSessionListener(final MaybeEmitter<CaptureResultParams> source) {
+    private static CameraCaptureSession.CaptureCallback createCaptureCallback(final ObservableEmitter<CaptureSessionData> source) {
         return new CameraCaptureSession.CaptureCallback() {
+
+            @Override
+            public void onCaptureStarted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, long timestamp, long frameNumber) {
+            }
+
+            @Override
+            public void onCaptureProgressed(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull CaptureResult partialResult) {
+            }
+
             @Override
             public void onCaptureCompleted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
-                super.onCaptureCompleted(session, request, result);
                 if (!source.isDisposed()) {
-                    source.onSuccess(new CaptureResultParams(session, result));
-                    source.onComplete();
+                    source.onNext(new CaptureSessionData(CaptureSessionEvents.ON_COMPLETED, session, request, result));
                 }
             }
 
             @Override
             public void onCaptureFailed(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull CaptureFailure failure) {
-                super.onCaptureFailed(session, request, failure);
                 if (!source.isDisposed()) {
                     source.onError(new CameraCaptureFailedException(failure));
                 }
+            }
+
+            @Override
+            public void onCaptureSequenceCompleted(@NonNull CameraCaptureSession session, int sequenceId, long frameNumber) {
+            }
+
+            @Override
+            public void onCaptureSequenceAborted(@NonNull CameraCaptureSession session, int sequenceId) {
             }
         };
     }
@@ -229,6 +267,7 @@ public class CameraRxWrapper {
     public static class CameraCaptureFailedException extends Exception {
 
         public final CaptureFailure mFailure;
+
         public CameraCaptureFailedException(CaptureFailure failure) {
             mFailure = failure;
         }

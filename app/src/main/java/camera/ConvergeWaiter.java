@@ -11,6 +11,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
+import camera.CameraRxWrapper.CaptureSessionData;
 import io.reactivex.Observable;
 import io.reactivex.Single;
 import io.reactivex.android.schedulers.AndroidSchedulers;
@@ -38,22 +39,22 @@ class ConvergeWaiter {
     }
 
     @NonNull
-    Single<CaptureResultParams> waitForConverge(@NonNull CaptureResultParams captureResultParams, @NonNull CaptureRequest.Builder builder) {
+    Single<CaptureSessionData> waitForConverge(@NonNull CaptureSessionData captureResultParams, @NonNull CaptureRequest.Builder builder) {
         CaptureRequest previewRequest = builder.build();
 
         builder.set(mRequestTriggerKey, mRequestTriggerStartValue);
         CaptureRequest triggerRequest = builder.build();
 
-        Observable<CaptureResultParams> triggerObservable = CameraRxWrapper.fromCapture(captureResultParams.cameraCaptureSession, triggerRequest).toObservable();
-        Observable<CaptureResultParams> previewObservable = CameraRxWrapper.fromSetRepeatingRequest(captureResultParams.cameraCaptureSession, previewRequest).toObservable();
+        Observable<CaptureSessionData> triggerObservable = CameraRxWrapper.fromCapture(captureResultParams.session, triggerRequest);
+        Observable<CaptureSessionData> previewObservable = CameraRxWrapper.fromSetRepeatingRequest(captureResultParams.session, previewRequest);
         RequestStateMachine requestStateMachine = new RequestStateMachine();
-        Observable<CaptureResultParams> convergeObservable = Observable
+        Observable<CaptureSessionData> convergeObservable = Observable
             .merge(previewObservable, triggerObservable) //order matters
-            .filter(resultParams -> filterWithStateMachine(resultParams.captureResult, requestStateMachine))
+            .filter(resultParams -> filterWithStateMachine(resultParams.result, requestStateMachine))
             .firstElement().toObservable()
             .map(result -> captureResultParams);
 
-        Observable<CaptureResultParams> timeOutObservable = Observable
+        Observable<CaptureSessionData> timeOutObservable = Observable
             .just(captureResultParams)
             .delay(TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .observeOn(AndroidSchedulers.mainThread());

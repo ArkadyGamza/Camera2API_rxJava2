@@ -26,6 +26,7 @@ import android.view.WindowManager;
 
 import java.io.File;
 
+import camera.CameraRxWrapper.CaptureSessionData;
 import io.reactivex.Observable;
 import io.reactivex.android.schedulers.AndroidSchedulers;
 import io.reactivex.disposables.CompositeDisposable;
@@ -36,8 +37,7 @@ import io.reactivex.subjects.PublishSubject;
 @TargetApi(21)
 public class CameraController {
 
-    static final String TAG = "!!!!";
-//    static final String TAG = CameraController.class.getName();
+    static final String TAG = CameraController.class.getName();
 
     @NonNull
     private final Context mContext;
@@ -254,7 +254,7 @@ public class CameraController {
 
         // open camera
 
-        Observable<Pair<CameraRxWrapper.OpenCameraEvents, CameraDevice>> cameraDeviceObservable = mOnSurfaceTextureAvailable
+        Observable<Pair<CameraRxWrapper.DeviceStateEvents, CameraDevice>> cameraDeviceObservable = mOnSurfaceTextureAvailable
             .firstElement()
             .doAfterSuccess(this::setupSurface)
             .doAfterSuccess(s -> initImageReader())
@@ -263,51 +263,54 @@ public class CameraController {
             .share();
 
         Observable<CameraDevice> openCameraObservable = cameraDeviceObservable
-            .filter(pair -> pair.first == CameraRxWrapper.OpenCameraEvents.ON_OPENED)
+            .filter(pair -> pair.first == CameraRxWrapper.DeviceStateEvents.ON_OPENED)
             .map(pair -> pair.second)
             .share();
 
         Observable<CameraDevice> closeCameraObservable = cameraDeviceObservable
-            .filter(pair -> pair.first == CameraRxWrapper.OpenCameraEvents.ON_CLOSED)
+            .filter(pair -> pair.first == CameraRxWrapper.DeviceStateEvents.ON_CLOSED)
             .map(pair -> pair.second)
             .share();
 
         // create capture session
 
-        Observable<Pair<CameraRxWrapper.CreateCaptureSessionEvents, CameraCaptureSession>> createCaptureSessionObservable = openCameraObservable
+        Observable<Pair<CameraRxWrapper.CaptureSessionStateEvents, CameraCaptureSession>> createCaptureSessionObservable = openCameraObservable
             .flatMap(cameraDevice -> CameraRxWrapper
                 .createCaptureSession(cameraDevice, mImageReader, mSurfaceParams.previewSurface)
             )
             .share();
 
         Observable<CameraCaptureSession> captureSessionConfiguredObservable = createCaptureSessionObservable
-            .filter(pair -> pair.first == CameraRxWrapper.CreateCaptureSessionEvents.ON_CONFIGURED)
+            .filter(pair -> pair.first == CameraRxWrapper.CaptureSessionStateEvents.ON_CONFIGURED)
             .map(pair -> pair.second)
             .share();
 
         Observable<CameraCaptureSession> captureSessionClosedObservable = createCaptureSessionObservable
-            .filter(pair -> pair.first == CameraRxWrapper.CreateCaptureSessionEvents.ON_CLOSED)
+            .filter(pair -> pair.first == CameraRxWrapper.CaptureSessionStateEvents.ON_CLOSED)
             .map(pair -> pair.second)
             .share();
 
         // start preview
 
-        Observable<CaptureResultParams> previewObservable = captureSessionConfiguredObservable
-            .flatMap(cameraCaptureSession -> startPreview(cameraCaptureSession).firstElement().toObservable())
+        Observable<CaptureSessionData> previewObservable = captureSessionConfiguredObservable
+            .flatMap(cameraCaptureSession -> {
+                Log.d(TAG, "\tstartPreview");
+                CaptureRequest.Builder previewBuilder = createPreviewBuilder(cameraCaptureSession, mSurfaceParams.previewSurface);
+                return CameraRxWrapper.fromSetRepeatingRequest(cameraCaptureSession, previewBuilder.build());
+            })
             .doOnNext(o -> Log.d(TAG, "\tpreviewObservable emitted"))
             .share();
 
         // react to shutter button
 
         mCompositeDisposable.add(
-            Observable.combineLatest(previewObservable, mOnShutterClick, (captureResultParams, o) -> captureResultParams)
+            Observable.combineLatest(previewObservable, mOnShutterClick, (captureSessionData, o) -> captureSessionData)
                 .doOnNext(o -> Log.d(TAG, "\ton shutter click"))
-                .firstElement().toObservable()
                 .doOnNext(state -> mCallback.onFocusStarted())
                 .flatMap(this::waitForAf)
                 .flatMap(this::waitForAe)
                 .doOnNext(state -> mCallback.onFocusFinished())
-                .flatMap(captureResultParams -> captureStillPicture(captureResultParams.cameraCaptureSession))
+                .flatMap(captureSessionData1 -> captureStillPicture(captureSessionData1.session))
                 .ignoreElements()
                 .subscribe(() -> {
                 }, this::onError)
@@ -316,11 +319,11 @@ public class CameraController {
         // react to switch camera button
 
         mCompositeDisposable.add(
-            Observable.combineLatest(previewObservable, mOnSwitchCameraClick.firstElement().toObservable(), (captureResultParams, o) -> captureResultParams)
+            Observable.combineLatest(previewObservable, mOnSwitchCameraClick.firstElement().toObservable(), (captureSessionData, o) -> captureSessionData)
                 .doOnNext(o -> Log.d(TAG, "\ton switch camera click"))
                 .firstElement().toObservable()
-                .doOnNext(captureResultParams -> captureResultParams.cameraCaptureSession.close())
-                .flatMap(captureResultParams -> captureSessionClosedObservable)
+                .doOnNext(captureSessionData -> captureSessionData.session.close())
+                .flatMap(captureSessionData -> captureSessionClosedObservable)
                 .doOnNext(cameraCaptureSession -> cameraCaptureSession.getDevice().close())
                 .flatMap(cameraCaptureSession -> closeCameraObservable)
                 .doOnNext(cameraDevice -> closeImageReader())
@@ -332,8 +335,8 @@ public class CameraController {
         mCompositeDisposable.add(Observable.combineLatest(previewObservable, mOnPauseSubject.firstElement().toObservable(), (state, o) -> state)
             .doOnNext(o -> Log.d(TAG, "\ton pause"))
             .firstElement().toObservable()
-            .doOnNext(captureResultParams -> captureResultParams.cameraCaptureSession.close())
-            .flatMap(captureResultParams -> captureSessionClosedObservable)
+            .doOnNext(captureSessionData -> captureSessionData.session.close())
+            .flatMap(captureSessionData -> captureSessionClosedObservable)
             .doOnNext(cameraCaptureSession -> cameraCaptureSession.getDevice().close())
             .flatMap(cameraCaptureSession -> closeCameraObservable)
             .doOnNext(cameraDevice -> closeImageReader())
@@ -397,14 +400,6 @@ public class CameraController {
         return mCameraParams.cameraCharacteristics.get(CameraCharacteristics.LENS_FACING);
     }
 
-    @NonNull
-    private Observable<CaptureResultParams> startPreview(@NonNull CameraCaptureSession cameraCaptureSession) {
-        Log.d(TAG, "\tstartPreview");
-        return Observable
-            .fromCallable(() -> createPreviewBuilder(cameraCaptureSession, mSurfaceParams.previewSurface))
-            .flatMap(previewBuilder -> CameraRxWrapper.fromSetRepeatingRequest(cameraCaptureSession, previewBuilder.build()).toObservable());
-    }
-
     private static boolean contains(int[] modes, int mode) {
         if (modes == null) {
             return false;
@@ -417,9 +412,9 @@ public class CameraController {
         return false;
     }
 
-    private Observable<CaptureResultParams> waitForAf(@NonNull CaptureResultParams captureResultParams) {
+    private Observable<CaptureSessionData> waitForAf(@NonNull CaptureSessionData captureResultParams) {
         return Observable
-            .fromCallable(() -> createPreviewBuilder(captureResultParams.cameraCaptureSession, mSurfaceParams.previewSurface))
+            .fromCallable(() -> createPreviewBuilder(captureResultParams.session, mSurfaceParams.previewSurface))
             .flatMap(
                 previewBuilder -> mAutoFocusConvergeWaiter
                     .waitForConverge(captureResultParams, previewBuilder)
@@ -428,9 +423,9 @@ public class CameraController {
     }
 
     @NonNull
-    private Observable<CaptureResultParams> waitForAe(@NonNull CaptureResultParams captureResultParams) {
+    private Observable<CaptureSessionData> waitForAe(@NonNull CaptureSessionData captureResultParams) {
         return Observable
-            .fromCallable(() -> createPreviewBuilder(captureResultParams.cameraCaptureSession, mSurfaceParams.previewSurface))
+            .fromCallable(() -> createPreviewBuilder(captureResultParams.session, mSurfaceParams.previewSurface))
             .flatMap(
                 previewBuilder -> mAutoExposureConvergeWaiter
                     .waitForConverge(captureResultParams, previewBuilder)
@@ -439,11 +434,11 @@ public class CameraController {
     }
 
     @NonNull
-    private Observable<CaptureResultParams> captureStillPicture(@NonNull CameraCaptureSession cameraCaptureSession) {
+    private Observable<CaptureSessionData> captureStillPicture(@NonNull CameraCaptureSession cameraCaptureSession) {
         Log.d(TAG, "\tcaptureStillPicture");
         return Observable
             .fromCallable(() -> createStillPictureBuilder(cameraCaptureSession.getDevice()))
-            .flatMap(builder -> CameraRxWrapper.fromCapture(cameraCaptureSession, builder.build()).toObservable());
+            .flatMap(builder -> CameraRxWrapper.fromCapture(cameraCaptureSession, builder.build()));
     }
 
     @NonNull
