@@ -53,7 +53,7 @@ public class CameraRxWrapper {
         return Observable.create(observableEmitter -> {
             Log.d(TAG, "\topenCamera");
 
-            observableEmitter.setCancellable(() -> Log.d(TAG, "\topenCamera - unsubscribed")); //todo think of close camera here
+            observableEmitter.setCancellable(() -> Log.d(TAG, "\topenCamera - unsubscribed"));
 
             cameraManager.openCamera(cameraId, new CameraDevice.StateCallback() {
                 @Override
@@ -121,16 +121,13 @@ public class CameraRxWrapper {
     @NonNull
     public static Observable<Pair<CaptureSessionStateEvents, CameraCaptureSession>> createCaptureSession(
         @NonNull CameraDevice cameraDevice,
-        @NonNull ImageReader imageReader,
-        @NonNull Surface previewSurface
+        @NonNull List<Surface> surfaceList
     ) {
         return Observable.create(observableEmitter -> {
             Log.d(TAG, "\tcreateCaptureSession");
-            List<Surface> outputs = Arrays.asList(previewSurface, imageReader.getSurface());
+            observableEmitter.setCancellable(() -> Log.d(TAG, "\tcreateCaptureSession - unsubscribed"));
 
-            observableEmitter.setCancellable(() -> Log.d(TAG, "\tcreateCaptureSession - unsubscribed")); //todo think of close session here
-
-            cameraDevice.createCaptureSession(outputs, new CameraCaptureSession.StateCallback() {
+            cameraDevice.createCaptureSession(surfaceList, new CameraCaptureSession.StateCallback() {
 
                 @Override
                 public void onConfigured(@NonNull CameraCaptureSession session) {

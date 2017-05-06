@@ -25,6 +25,7 @@ import android.view.TextureView;
 import android.view.WindowManager;
 
 import java.io.File;
+import java.util.Arrays;
 
 import camera.CameraRxWrapper.CaptureSessionData;
 import io.reactivex.Observable;
@@ -276,7 +277,7 @@ public class CameraController {
 
         Observable<Pair<CameraRxWrapper.CaptureSessionStateEvents, CameraCaptureSession>> createCaptureSessionObservable = openCameraObservable
             .flatMap(cameraDevice -> CameraRxWrapper
-                .createCaptureSession(cameraDevice, mImageReader, mSurfaceParams.previewSurface)
+                .createCaptureSession(cameraDevice, Arrays.asList(mSurfaceParams.previewSurface, mImageReader.getSurface()))
             )
             .share();
 
