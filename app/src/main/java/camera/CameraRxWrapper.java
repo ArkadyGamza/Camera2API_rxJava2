@@ -8,13 +8,11 @@ import android.hardware.camera2.CaptureFailure;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.TotalCaptureResult;
-import android.media.ImageReader;
 import android.support.annotation.NonNull;
 import android.util.Log;
 import android.util.Pair;
 import android.view.Surface;
 
-import java.util.Arrays;
 import java.util.List;
 
 import io.reactivex.Observable;
@@ -220,7 +218,7 @@ public class CameraRxWrapper {
     }
 
     @NonNull
-    private static CameraCaptureSession.CaptureCallback createCaptureCallback(final ObservableEmitter<CaptureSessionData> source) {
+    private static CameraCaptureSession.CaptureCallback createCaptureCallback(final ObservableEmitter<CaptureSessionData> observableEmitter) {
         return new CameraCaptureSession.CaptureCallback() {
 
             @Override
@@ -233,15 +231,15 @@ public class CameraRxWrapper {
 
             @Override
             public void onCaptureCompleted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
-                if (!source.isDisposed()) {
-                    source.onNext(new CaptureSessionData(CaptureSessionEvents.ON_COMPLETED, session, request, result));
+                if (!observableEmitter.isDisposed()) {
+                    observableEmitter.onNext(new CaptureSessionData(CaptureSessionEvents.ON_COMPLETED, session, request, result));
                 }
             }
 
             @Override
             public void onCaptureFailed(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull CaptureFailure failure) {
-                if (!source.isDisposed()) {
-                    source.onError(new CameraCaptureFailedException(failure));
+                if (!observableEmitter.isDisposed()) {
+                    observableEmitter.onError(new CameraCaptureFailedException(failure));
                 }
             }
 
