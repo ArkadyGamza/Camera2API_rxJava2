@@ -493,16 +493,6 @@ public class CameraController {
         }
     }
 
-    private Observable<CameraCaptureSession> closeSessionBlocking(@NonNull CameraCaptureSession cameraCaptureSession, @NonNull Observable<CameraCaptureSession> cameraCaptureSessionObservable) {
-        Log.d(TAG, "\tcloseSessionBlocking..." + Thread.currentThread().getName());
-        //wait until the capture session observable completes
-        cameraCaptureSession.close();
-        return cameraCaptureSessionObservable
-            .ignoreElements()
-            .<CameraCaptureSession>toObservable()
-            .switchIfEmpty(Observable.just(cameraCaptureSession));
-    }
-
     private void closeImageReader() {
         Log.d(TAG, "\tcloseImageReader");
         if (mImageReader != null) {
