@@ -249,9 +249,9 @@ public class CameraController {
         Observable<Pair<CameraRxWrapper.DeviceStateEvents, CameraDevice>> cameraDeviceObservable = mOnSurfaceTextureAvailable
             .firstElement()
             .doAfterSuccess(this::setupSurface)
-            .doAfterSuccess(ignore -> initImageReader())
+            .doAfterSuccess(__ -> initImageReader())
             .toObservable()
-            .flatMap(ignore -> CameraRxWrapper.openCamera(mCameraParams.cameraId, mCameraManager))
+            .flatMap(__ -> CameraRxWrapper.openCamera(mCameraParams.cameraId, mCameraManager))
             .share();
 
         Observable<CameraDevice> openCameraObservable = cameraDeviceObservable
@@ -290,7 +290,6 @@ public class CameraController {
                 CaptureRequest.Builder previewBuilder = createPreviewBuilder(cameraCaptureSession, mSurface);
                 return CameraRxWrapper.fromSetRepeatingRequest(cameraCaptureSession, previewBuilder.build());
             })
-
             .share();
 
         // react to shutter button
@@ -298,14 +297,13 @@ public class CameraController {
         mCompositeDisposable.add(
             Observable.combineLatest(previewObservable, mOnShutterClick, (captureSessionData, o) -> captureSessionData)
                 .firstElement().toObservable()
-                .doOnNext(o -> Log.d(TAG, "\ton shutter click"))
-                .doOnNext(state -> mCallback.onFocusStarted())
+                .doOnNext(__ -> Log.d(TAG, "\ton shutter click"))
+                .doOnNext(__ -> mCallback.onFocusStarted())
                 .flatMap(this::waitForAf)
                 .flatMap(this::waitForAe)
-                .doOnNext(state -> mCallback.onFocusFinished())
+                .doOnNext(__ -> mCallback.onFocusFinished())
                 .flatMap(captureSessionData1 -> captureStillPicture(captureSessionData1.session))
-                .ignoreElements()
-                .subscribe(() -> {
+                .subscribe(__ -> {
                 }, this::onError)
         );
 
@@ -314,26 +312,26 @@ public class CameraController {
         mCompositeDisposable.add(
             Observable.combineLatest(previewObservable, mOnSwitchCameraClick, (captureSessionData, o) -> captureSessionData)
                 .firstElement().toObservable()
-                .doOnNext(o -> Log.d(TAG, "\ton switch camera click"))
+                .doOnNext(__ -> Log.d(TAG, "\ton switch camera click"))
                 .doOnNext(captureSessionData -> captureSessionData.session.close())
-                .flatMap(captureSessionData -> captureSessionClosedObservable)
+                .flatMap(__ -> captureSessionClosedObservable)
                 .doOnNext(cameraCaptureSession -> cameraCaptureSession.getDevice().close())
-                .flatMap(cameraCaptureSession -> closeCameraObservable)
-                .doOnNext(cameraDevice -> closeImageReader())
-                .subscribe(cameraDevice -> switchCameraInternal(), this::onError)
+                .flatMap(__ -> closeCameraObservable)
+                .doOnNext(__ -> closeImageReader())
+                .subscribe(__ -> switchCameraInternal(), this::onError)
         );
 
         // react to onPause event
 
         mCompositeDisposable.add(Observable.combineLatest(previewObservable, mOnPauseSubject, (state, o) -> state)
             .firstElement().toObservable()
-            .doOnNext(o -> Log.d(TAG, "\ton pause"))
+            .doOnNext(__ -> Log.d(TAG, "\ton pause"))
             .doOnNext(captureSessionData -> captureSessionData.session.close())
-            .flatMap(captureSessionData -> captureSessionClosedObservable)
+            .flatMap(__ -> captureSessionClosedObservable)
             .doOnNext(cameraCaptureSession -> cameraCaptureSession.getDevice().close())
-            .flatMap(cameraCaptureSession -> closeCameraObservable)
-            .doOnNext(cameraDevice -> closeImageReader())
-            .subscribe(state -> unsubscribe(), this::onError)
+            .flatMap(__ -> closeCameraObservable)
+            .doOnNext(__ -> closeImageReader())
+            .subscribe(__ -> unsubscribe(), this::onError)
         );
     }
 
