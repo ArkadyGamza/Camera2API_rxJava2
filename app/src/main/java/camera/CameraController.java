@@ -53,7 +53,7 @@ public class CameraController {
     private final WindowManager mWindowManager;
     @NonNull
     private final CameraManager mCameraManager;
-    private SurfaceParams mSurfaceParams;
+    private Surface mSurface;
     private ImageReader mImageReader;
 
     private class CameraParams {
@@ -68,15 +68,6 @@ public class CameraController {
             this.cameraId = cameraId;
             this.cameraCharacteristics = cameraCharacteristics;
             this.previewSize = previewSize;
-        }
-    }
-
-    private class SurfaceParams {
-        @NonNull
-        private final Surface previewSurface;
-
-        private SurfaceParams(@NonNull Surface previewSurface) {
-            this.previewSurface = previewSurface;
         }
     }
 
@@ -258,9 +249,9 @@ public class CameraController {
         Observable<Pair<CameraRxWrapper.DeviceStateEvents, CameraDevice>> cameraDeviceObservable = mOnSurfaceTextureAvailable
             .firstElement()
             .doAfterSuccess(this::setupSurface)
-            .doAfterSuccess(s -> initImageReader())
+            .doAfterSuccess(ignore -> initImageReader())
             .toObservable()
-            .flatMap(s -> CameraRxWrapper.openCamera(mCameraParams.cameraId, mCameraManager))
+            .flatMap(ignore -> CameraRxWrapper.openCamera(mCameraParams.cameraId, mCameraManager))
             .share();
 
         Observable<CameraDevice> openCameraObservable = cameraDeviceObservable
@@ -277,7 +268,7 @@ public class CameraController {
 
         Observable<Pair<CameraRxWrapper.CaptureSessionStateEvents, CameraCaptureSession>> createCaptureSessionObservable = openCameraObservable
             .flatMap(cameraDevice -> CameraRxWrapper
-                .createCaptureSession(cameraDevice, Arrays.asList(mSurfaceParams.previewSurface, mImageReader.getSurface()))
+                .createCaptureSession(cameraDevice, Arrays.asList(mSurface, mImageReader.getSurface()))
             )
             .share();
 
@@ -296,7 +287,7 @@ public class CameraController {
         Observable<CaptureSessionData> previewObservable = captureSessionConfiguredObservable
             .flatMap(cameraCaptureSession -> {
                 Log.d(TAG, "\tstartPreview");
-                CaptureRequest.Builder previewBuilder = createPreviewBuilder(cameraCaptureSession, mSurfaceParams.previewSurface);
+                CaptureRequest.Builder previewBuilder = createPreviewBuilder(cameraCaptureSession, mSurface);
                 return CameraRxWrapper.fromSetRepeatingRequest(cameraCaptureSession, previewBuilder.build());
             })
 
@@ -365,8 +356,7 @@ public class CameraController {
 
     private void setupSurface(@NonNull SurfaceTexture surfaceTexture) {
         surfaceTexture.setDefaultBufferSize(mCameraParams.previewSize.getWidth(), mCameraParams.previewSize.getHeight());
-        Surface previewSurface = new Surface(surfaceTexture);
-        mSurfaceParams = new SurfaceParams(previewSurface);
+        mSurface = new Surface(surfaceTexture);
     }
 
     private void switchCameraInternal() {
@@ -416,7 +406,7 @@ public class CameraController {
 
     private Observable<CaptureSessionData> waitForAf(@NonNull CaptureSessionData captureResultParams) {
         return Observable
-            .fromCallable(() -> createPreviewBuilder(captureResultParams.session, mSurfaceParams.previewSurface))
+            .fromCallable(() -> createPreviewBuilder(captureResultParams.session, mSurface))
             .flatMap(
                 previewBuilder -> mAutoFocusConvergeWaiter
                     .waitForConverge(captureResultParams, previewBuilder)
@@ -427,7 +417,7 @@ public class CameraController {
     @NonNull
     private Observable<CaptureSessionData> waitForAe(@NonNull CaptureSessionData captureResultParams) {
         return Observable
-            .fromCallable(() -> createPreviewBuilder(captureResultParams.session, mSurfaceParams.previewSurface))
+            .fromCallable(() -> createPreviewBuilder(captureResultParams.session, mSurface))
             .flatMap(
                 previewBuilder -> mAutoExposureConvergeWaiter
                     .waitForConverge(captureResultParams, previewBuilder)
