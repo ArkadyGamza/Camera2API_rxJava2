@@ -302,7 +302,7 @@ public class CameraController {
                 .flatMap(this::waitForAf)
                 .flatMap(this::waitForAe)
                 .doOnNext(__ -> mCallback.onFocusFinished())
-                .flatMap(captureSessionData1 -> captureStillPicture(captureSessionData1.session))
+                .flatMap(captureSessionData -> captureStillPicture(captureSessionData.session))
                 .subscribe(__ -> {
                 }, this::onError)
         );
