@@ -19,6 +19,7 @@ import io.reactivex.Single;
 @TargetApi(21)
 class ImageSaverRxWrapper {
 
+    @NonNull
     public static Single<File> save(@NonNull Image image, @NonNull File file) {
         return Single.fromCallable(() -> {
             try (FileChannel output = new FileOutputStream(file).getChannel()) {

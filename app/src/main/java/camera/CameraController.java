@@ -379,7 +379,7 @@ public class CameraController {
         mCompositeDisposable.add(
             ImageSaverRxWrapper.createOnImageAvailableObservable(mImageReader)
                 .observeOn(Schedulers.io())
-                .flatMap(imageReader1 -> ImageSaverRxWrapper.save(imageReader1.acquireLatestImage(), mFile).toObservable())
+                .flatMap(imageReader -> ImageSaverRxWrapper.save(imageReader.acquireLatestImage(), mFile).toObservable())
                 .observeOn(AndroidSchedulers.mainThread())
                 .subscribe(file -> mCallback.onPhotoTaken(file.getAbsolutePath(), getLensFacingPhotoType()))
         );
