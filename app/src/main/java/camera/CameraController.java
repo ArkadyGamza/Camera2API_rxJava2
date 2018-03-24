@@ -326,7 +326,11 @@ public class CameraController {
         mCompositeDisposable.add(Observable.combineLatest(previewObservable, mOnPauseSubject, (state, o) -> state)
             .firstElement().toObservable()
             .doOnNext(__ -> Log.d(TAG, "\ton pause"))
-            .doOnNext(captureSessionData -> captureSessionData.session.close())
+            .doOnNext(captureSessionData ->{
+                captureSessionData.session.stopRepeating();
+                captureSessionData.session.abortCaptures();
+                captureSessionData.session.close();
+            } )
             .flatMap(__ -> captureSessionClosedObservable)
             .doOnNext(cameraCaptureSession -> cameraCaptureSession.getDevice().close())
             .flatMap(__ -> closeCameraObservable)

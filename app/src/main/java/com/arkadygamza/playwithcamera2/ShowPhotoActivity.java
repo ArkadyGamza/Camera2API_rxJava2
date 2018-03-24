@@ -21,7 +21,7 @@ public class ShowPhotoActivity extends AppCompatActivity{
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.show_photo_activity);
-        mPhotoView = (ImageView) findViewById(R.id.showPhotoActivity_photo);
+        mPhotoView = findViewById(R.id.showPhotoActivity_photo);
         String photoUrl = IntentHelper.getPhotoUrl(getIntent());
         Picasso.with(this)
             .load(new File(photoUrl))
