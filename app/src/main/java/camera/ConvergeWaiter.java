@@ -47,34 +47,20 @@ class ConvergeWaiter {
 
         Observable<CaptureSessionData> triggerObservable = CameraRxWrapper.fromCapture(captureResultParams.session, triggerRequest);
         Observable<CaptureSessionData> previewObservable = CameraRxWrapper.fromSetRepeatingRequest(captureResultParams.session, previewRequest);
-        RequestStateMachine requestStateMachine = new RequestStateMachine();
-        Observable<CaptureSessionData> convergeObservable = Observable
-            .merge(previewObservable, triggerObservable) //order matters
-            .filter(resultParams -> filterWithStateMachine(resultParams.result, requestStateMachine))
-            .firstElement().toObservable()
-            .map(result -> captureResultParams);
+        Single<CaptureSessionData> convergeSingle = Observable
+            .merge(previewObservable, triggerObservable)
+            .filter(resultParams -> isStateReady(resultParams.result))
+            .first(captureResultParams);
 
-        Observable<CaptureSessionData> timeOutObservable = Observable
+        Single<CaptureSessionData> timeOutSingle = Single
             .just(captureResultParams)
             .delay(TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .observeOn(AndroidSchedulers.mainThread());
 
-        return Observable
-            .merge(convergeObservable, timeOutObservable)
+        return Single
+            .merge(convergeSingle, timeOutSingle)
             .firstElement()
             .toSingle();
-    }
-
-    private boolean filterWithStateMachine(@NonNull CaptureResult captureResult, @NonNull RequestStateMachine stateMachine) {
-        Integer triggerState = captureResult.getRequest().get(mRequestTriggerKey);
-        if (triggerState == null) {
-            return false;
-        }
-        return stateMachine.updateAndCheckIfReady(
-            triggerState == mRequestTriggerStartValue,
-            captureResult.getFrameNumber(),
-            isStateReady(captureResult)
-        );
     }
 
     private boolean isStateReady(@NonNull CaptureResult result) {
