@@ -54,8 +54,7 @@ class ConvergeWaiter {
 
         Single<CaptureSessionData> timeOutSingle = Single
             .just(captureResultParams)
-            .delay(TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            .observeOn(AndroidSchedulers.mainThread());
+            .delay(TIMEOUT_SECONDS, TimeUnit.SECONDS, AndroidSchedulers.mainThread());
 
         return Single
             .merge(convergeSingle, timeOutSingle)
