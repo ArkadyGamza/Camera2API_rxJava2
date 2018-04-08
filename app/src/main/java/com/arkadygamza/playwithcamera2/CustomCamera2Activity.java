@@ -46,7 +46,7 @@ public class CustomCamera2Activity extends AppCompatActivity {
             this,
             mRxCamerController21Callback,
             outputFile.getAbsolutePath(),
-            (AutoFitTextureView) findViewById(R.id.customCameraActivity_textureView),
+            findViewById(R.id.customCameraActivity_textureView),
             Configuration.ORIENTATION_PORTRAIT);
         mRxCameraController21.getLifecycle().onCreate(savedInstanceState);
     }
