@@ -217,42 +217,41 @@ public class CameraRxWrapper {
             .create(observableEmitter -> captureSession.capture(request, createCaptureCallback(observableEmitter), null));
     }
 
-    @NonNull
-    private static CameraCaptureSession.CaptureCallback createCaptureCallback(final ObservableEmitter<CaptureSessionData> observableEmitter) {
-        return new CameraCaptureSession.CaptureCallback() {
+@NonNull
+private static CameraCaptureSession.CaptureCallback createCaptureCallback(final ObservableEmitter<CaptureSessionData> observableEmitter) {
+    return new CameraCaptureSession.CaptureCallback() {
 
-            @Override
-            public void onCaptureStarted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, long timestamp, long frameNumber) {
+        @Override
+        public void onCaptureStarted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, long timestamp, long frameNumber) {
+        }
+
+        @Override
+        public void onCaptureProgressed(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull CaptureResult partialResult) {
+        }
+
+        @Override
+        public void onCaptureCompleted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
+            if (!observableEmitter.isDisposed()) {
+                observableEmitter.onNext(new CaptureSessionData(CaptureSessionEvents.ON_COMPLETED, session, request, result));
             }
+        }
 
-            @Override
-            public void onCaptureProgressed(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull CaptureResult partialResult) {
+        @Override
+        public void onCaptureFailed(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull CaptureFailure failure) {
+            if (!observableEmitter.isDisposed()) {
+                observableEmitter.onError(new CameraCaptureFailedException(failure));
             }
+        }
 
-            @Override
-            public void onCaptureCompleted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
-                if (!observableEmitter.isDisposed()) {
-                    observableEmitter.onNext(new CaptureSessionData(CaptureSessionEvents.ON_COMPLETED, session, request, result));
-                }
-            }
+        @Override
+        public void onCaptureSequenceCompleted(@NonNull CameraCaptureSession session, int sequenceId, long frameNumber) {
+        }
 
-            @Override
-            public void onCaptureFailed(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull CaptureFailure failure) {
-                if (!observableEmitter.isDisposed()) {
-                    observableEmitter.onError(new CameraCaptureFailedException(failure));
-                }
-            }
-
-            @Override
-            public void onCaptureSequenceCompleted(@NonNull CameraCaptureSession session, int sequenceId, long frameNumber) {
-            }
-
-            @Override
-            public void onCaptureSequenceAborted(@NonNull CameraCaptureSession session, int sequenceId) {
-            }
-        };
-    }
-
+        @Override
+        public void onCaptureSequenceAborted(@NonNull CameraCaptureSession session, int sequenceId) {
+        }
+    };
+}
 
     public static class CreateCaptureSessionException extends Exception {
         public final CameraCaptureSession session;
