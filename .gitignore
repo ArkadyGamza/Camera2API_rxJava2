@@ -2,9 +2,6 @@
 .gradle
 /local.properties
 /.idea
-/.idea/libraries
-/.idea/caches
-/.idea/caches
 .DS_Store
 /build
 /captures
