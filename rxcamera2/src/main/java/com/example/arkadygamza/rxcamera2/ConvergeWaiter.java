@@ -1,4 +1,4 @@
-package camera;
+package com.example.arkadygamza.rxcamera2;
 
 import android.annotation.TargetApi;
 import android.hardware.camera2.CameraMetadata;
@@ -11,7 +11,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-import camera.CameraRxWrapper.CaptureSessionData;
+import com.example.arkadygamza.rxcamera2.CameraRxWrapper.CaptureSessionData;
 import io.reactivex.Observable;
 import io.reactivex.Single;
 import io.reactivex.android.schedulers.AndroidSchedulers;

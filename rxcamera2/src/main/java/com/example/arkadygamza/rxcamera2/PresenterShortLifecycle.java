@@ -1,4 +1,4 @@
-package camera;
+package com.example.arkadygamza.rxcamera2;
 
 import android.os.Bundle;
 import android.support.annotation.Nullable;

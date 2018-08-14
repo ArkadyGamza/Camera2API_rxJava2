@@ -9,12 +9,12 @@ import android.support.annotation.Nullable;
 import android.support.v7.app.AppCompatActivity;
 import android.view.View;
 
+import com.example.arkadygamza.rxcamera2.CameraController;
+import com.example.arkadygamza.rxcamera2.OpenCameraException;
+
 import java.io.File;
 import java.io.IOException;
 
-import camera.AutoFitTextureView;
-import camera.CameraController;
-import camera.OpenCameraException;
 
 
 public class CustomCamera2Activity extends AppCompatActivity {

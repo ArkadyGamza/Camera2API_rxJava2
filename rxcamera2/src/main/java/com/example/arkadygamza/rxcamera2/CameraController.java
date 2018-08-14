@@ -1,4 +1,4 @@
-package camera;
+package com.example.arkadygamza.rxcamera2;
 
 import android.annotation.TargetApi;
 import android.content.Context;
@@ -27,7 +27,7 @@ import android.view.WindowManager;
 import java.io.File;
 import java.util.Arrays;
 
-import camera.CameraRxWrapper.CaptureSessionData;
+import com.example.arkadygamza.rxcamera2.CameraRxWrapper.CaptureSessionData;
 import io.reactivex.Observable;
 import io.reactivex.android.schedulers.AndroidSchedulers;
 import io.reactivex.disposables.CompositeDisposable;

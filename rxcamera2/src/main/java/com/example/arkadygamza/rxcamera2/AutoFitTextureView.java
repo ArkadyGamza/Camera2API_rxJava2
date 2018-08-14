@@ -1,5 +1,5 @@
 
-package camera;
+package com.example.arkadygamza.rxcamera2;
 
 import android.content.Context;
 import android.util.AttributeSet;

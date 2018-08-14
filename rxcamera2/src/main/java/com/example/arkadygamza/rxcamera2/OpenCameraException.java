@@ -1,4 +1,4 @@
-package camera;
+package com.example.arkadygamza.rxcamera2;
 
 import android.annotation.TargetApi;
 import android.hardware.camera2.CameraDevice;

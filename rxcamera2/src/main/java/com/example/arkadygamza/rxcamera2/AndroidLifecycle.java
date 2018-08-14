@@ -1,4 +1,4 @@
-package camera;
+package com.example.arkadygamza.rxcamera2;
 
 import android.content.Intent;
 import android.os.Bundle;
