@@ -1,5 +1,6 @@
 package com.example.arkadygamza.rxcamera2;
 
+import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
 import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CameraDevice;
@@ -44,6 +45,7 @@ public class CameraRxWrapper {
         ON_DISCONNECTED
     }
 
+    @SuppressLint("MissingPermission")
     public static Observable<Pair<DeviceStateEvents, CameraDevice>> openCamera(
         @NonNull String cameraId,
         @NonNull CameraManager cameraManager

@@ -23,7 +23,7 @@ public class ShowPhotoActivity extends AppCompatActivity{
         setContentView(R.layout.show_photo_activity);
         mPhotoView = findViewById(R.id.showPhotoActivity_photo);
         String photoUrl = IntentHelper.getPhotoUrl(getIntent());
-        Picasso.with(this)
+        Picasso.get()
             .load(new File(photoUrl))
             .memoryPolicy(MemoryPolicy.NO_CACHE, MemoryPolicy.NO_STORE)
             .placeholder(R.drawable.ic_adb_black_24dp)
