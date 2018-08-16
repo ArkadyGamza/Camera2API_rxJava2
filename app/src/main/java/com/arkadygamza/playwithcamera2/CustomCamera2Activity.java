@@ -47,44 +47,7 @@ public class CustomCamera2Activity extends AppCompatActivity {
             mRxCamerController21Callback,
             outputFile.getAbsolutePath(),
             findViewById(R.id.customCameraActivity_textureView),
-            Configuration.ORIENTATION_PORTRAIT);
-        mRxCameraController21.getLifecycle().onCreate(savedInstanceState);
-    }
-
-    @Override
-    protected void onStart() {
-        super.onStart();
-        mRxCameraController21.getLifecycle().onStart();
-    }
-
-    @Override
-    protected void onResume() {
-        super.onResume();
-        mRxCameraController21.getLifecycle().onResume();
-    }
-
-    @Override
-    protected void onPause() {
-        super.onPause();
-        mRxCameraController21.getLifecycle().onPause();
-    }
-
-    @Override
-    protected void onStop() {
-        super.onStop();
-        mRxCameraController21.getLifecycle().onStop();
-    }
-
-    @Override
-    protected void onSaveInstanceState(Bundle outState) {
-        super.onSaveInstanceState(outState);
-        mRxCameraController21.getLifecycle().onSaveInstanceState(outState);
-    }
-
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        mRxCameraController21.getLifecycle().onDestroy();
+            Configuration.ORIENTATION_PORTRAIT, this.getLifecycle());
     }
 
     private final CameraController.Callback mRxCamerController21Callback = new CameraController.Callback() {

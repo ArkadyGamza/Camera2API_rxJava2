@@ -1,8 +1,11 @@
 package com.example.arkadygamza.rxcamera2;
 
 import android.annotation.TargetApi;
+import android.arch.lifecycle.DefaultLifecycleObserver;
+import android.arch.lifecycle.Lifecycle;
+import android.arch.lifecycle.LifecycleObserver;
+import android.arch.lifecycle.LifecycleOwner;
 import android.content.Context;
-import android.content.Intent;
 import android.content.res.Configuration;
 import android.graphics.ImageFormat;
 import android.graphics.SurfaceTexture;
@@ -14,7 +17,6 @@ import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CameraMetadata;
 import android.hardware.camera2.CaptureRequest;
 import android.media.ImageReader;
-import android.os.Bundle;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.util.Log;
@@ -24,10 +26,11 @@ import android.view.Surface;
 import android.view.TextureView;
 import android.view.WindowManager;
 
+import com.example.arkadygamza.rxcamera2.CameraRxWrapper.CaptureSessionData;
+
 import java.io.File;
 import java.util.Arrays;
 
-import com.example.arkadygamza.rxcamera2.CameraRxWrapper.CaptureSessionData;
 import io.reactivex.Observable;
 import io.reactivex.android.schedulers.AndroidSchedulers;
 import io.reactivex.disposables.CompositeDisposable;
@@ -81,7 +84,7 @@ public class CameraController {
 
 
     public CameraController(@NonNull Context context, @NonNull Callback callback, @NonNull String photoFileUrl,
-                            @NonNull AutoFitTextureView textureView, int layoutOrientation) {
+                            @NonNull AutoFitTextureView textureView, int layoutOrientation, @NonNull Lifecycle lifecycle) {
         mContext = context;
         mCallback = callback;
         mFile = new File(photoFileUrl);
@@ -89,7 +92,7 @@ public class CameraController {
         mLayoutOrientation = layoutOrientation;
         mWindowManager = (WindowManager) mContext.getSystemService(Context.WINDOW_SERVICE);
         mCameraManager = (CameraManager) mContext.getSystemService(Context.CAMERA_SERVICE);
-
+        lifecycle.addObserver(mLifecycleObserver);
     }
 
     public void takePhoto() {
@@ -100,27 +103,17 @@ public class CameraController {
         mOnSwitchCameraClick.onNext(this);
     }
 
-    public AndroidLifecycle getLifecycle() {
-        return mLifecycleImpl;
-    }
-
     private CameraParams mCameraParams;
-    private final AndroidLifecycle mLifecycleImpl = new AndroidLifecycle() {
-        private static final String SIS_CAMERA_ID = "SIS_CAMERA_ID";
+    private final LifecycleObserver mLifecycleObserver = new DefaultLifecycleObserver(){
 
         @Override
-        public void onCreate(@Nullable Bundle saveState) {
+        public void onCreate(@NonNull LifecycleOwner owner) {
+
             Log.d(TAG, "\tonCreate");
             String cameraId = null;
-            if (saveState != null) {
-                cameraId = saveState.getString(SIS_CAMERA_ID);
-            }
-
             try {
-                if (cameraId == null) {
-                    Log.d(TAG, "\tchoosing default camera");
-                    cameraId = CameraStrategy.chooseDefaultCamera(mCameraManager);
-                }
+                Log.d(TAG, "\tchoosing default camera");
+                cameraId = CameraStrategy.chooseDefaultCamera(mCameraManager);
 
                 if (cameraId == null) {
                     mCallback.onException(new IllegalStateException("Can't find any camera"));
@@ -172,22 +165,7 @@ public class CameraController {
         }
 
         @Override
-        public void onDestroy() {
-            Log.d(TAG, "\tonDestroy");
-        }
-
-        @Override
-        public void onSaveInstanceState(@NonNull Bundle outState) {
-            outState.putString(SIS_CAMERA_ID, mCameraParams.cameraId);
-        }
-
-        @Override
-        public void onStart() {
-            Log.d(TAG, "\tonStart");
-        }
-
-        @Override
-        public void onResume() {
+        public void onResume(@NonNull LifecycleOwner owner) {
             Log.d(TAG, "\tonResume");
 
             subscribe();
@@ -202,22 +180,12 @@ public class CameraController {
             }
         }
 
-
         @Override
-        public void onPause() {
+        public void onPause(@NonNull LifecycleOwner owner) {
             Log.d(TAG, "\tonPause");
             mOnPauseSubject.onNext(this);
         }
 
-        @Override
-        public void onStop() {
-            Log.d(TAG, "\tonStop");
-        }
-
-        @Override
-        public void onActivityResult(int requestCode, int resultCode, Intent data) {
-
-        }
     };
 
     private CameraParams getCameraParams(@NonNull String cameraId) throws CameraAccessException {
