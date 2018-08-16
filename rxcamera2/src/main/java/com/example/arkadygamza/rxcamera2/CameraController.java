@@ -104,7 +104,7 @@ public class CameraController {
     }
 
     private CameraParams mCameraParams;
-    private final LifecycleObserver mLifecycleObserver = new DefaultLifecycleObserver(){
+    private final LifecycleObserver mLifecycleObserver = new DefaultLifecycleObserver() {
 
         @Override
         public void onCreate(@NonNull LifecycleOwner owner) {
@@ -232,6 +232,14 @@ public class CameraController {
             .map(pair -> pair.second)
             .share();
 
+        Observable<CameraDevice> errorCameraObservable = cameraDeviceObservable
+            .filter(pair -> pair.first == CameraRxWrapper.DeviceStateEvents.ON_ERROR)
+            .map(pair -> pair.second)
+            .share();
+
+        mCompositeDisposable.add(
+            errorCameraObservable.subscribe(__ -> onError(new OpenCameraException(null)))
+        );
         // create capture session
 
         Observable<Pair<CameraRxWrapper.CaptureSessionStateEvents, CameraCaptureSession>> createCaptureSessionObservable = openCameraObservable
@@ -283,8 +291,10 @@ public class CameraController {
                 .doOnNext(__ -> Log.d(TAG, "\ton switch camera click"))
                 .doOnNext(captureSessionData -> captureSessionData.session.close())
                 .flatMap(__ -> captureSessionClosedObservable)
+                .doOnNext(__ -> Log.d(TAG, "\tsession closed"))
                 .doOnNext(cameraCaptureSession -> cameraCaptureSession.getDevice().close())
                 .flatMap(__ -> closeCameraObservable)
+                .doOnNext(__ -> Log.d(TAG, "\tcamera closed"))
                 .doOnNext(__ -> closeImageReader())
                 .subscribe(__ -> switchCameraInternal(), this::onError)
         );
@@ -294,14 +304,12 @@ public class CameraController {
         mCompositeDisposable.add(Observable.combineLatest(previewObservable, mOnPauseSubject, (state, o) -> state)
             .firstElement().toObservable()
             .doOnNext(__ -> Log.d(TAG, "\ton pause"))
-            .doOnNext(captureSessionData ->{
-                captureSessionData.session.stopRepeating();
-                captureSessionData.session.abortCaptures();
-                captureSessionData.session.close();
-            } )
+            .doOnNext(captureSessionData -> captureSessionData.session.close())
             .flatMap(__ -> captureSessionClosedObservable)
+            .doOnNext(__ -> Log.d(TAG, "\tsession closed"))
             .doOnNext(cameraCaptureSession -> cameraCaptureSession.getDevice().close())
             .flatMap(__ -> closeCameraObservable)
+            .doOnNext(__ -> Log.d(TAG, "\tcamera closed"))
             .doOnNext(__ -> closeImageReader())
             .subscribe(__ -> unsubscribe(), this::onError)
         );

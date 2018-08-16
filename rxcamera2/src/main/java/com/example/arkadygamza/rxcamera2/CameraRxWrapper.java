@@ -42,7 +42,11 @@ public class CameraRxWrapper {
         /**
          * @see CameraDevice.StateCallback#onDisconnected(CameraDevice)
          */
-        ON_DISCONNECTED
+        ON_DISCONNECTED,
+        /**
+         * @see CameraDevice.StateCallback#onError(CameraDevice, int)
+         */
+        ON_ERROR
     }
 
     @SuppressLint("MissingPermission")
@@ -75,6 +79,7 @@ public class CameraRxWrapper {
 
                 @Override
                 public void onDisconnected(@NonNull CameraDevice cameraDevice) {
+                    Log.d(TAG, "\topenCamera - onDisconnected");
                     if (!observableEmitter.isDisposed()) {
                         observableEmitter.onNext(new Pair<>(DeviceStateEvents.ON_DISCONNECTED, cameraDevice));
                         observableEmitter.onComplete();
@@ -85,7 +90,8 @@ public class CameraRxWrapper {
                 public void onError(@NonNull CameraDevice camera, int error) {
                     Log.d(TAG, "\topenCamera - onError");
                     if (!observableEmitter.isDisposed()) {
-                        observableEmitter.onError(new OpenCameraException(OpenCameraException.Reason.getReason(error)));
+                        //todo use OpenCameraException.Reason.getReason(error);
+                        observableEmitter.onNext(new Pair<>(DeviceStateEvents.ON_DISCONNECTED, null));
                     }
                 }
             }, null);
@@ -112,6 +118,10 @@ public class CameraRxWrapper {
          * @see CameraCaptureSession.StateCallback#onClosed(CameraCaptureSession)
          */
         ON_CLOSED,
+        /**
+         * @see CameraCaptureSession.StateCallback#onConfigureFailed(CameraCaptureSession)
+         */
+        ON_CONFIGURE_FAILED,
         /**
          * @see CameraCaptureSession.StateCallback#onSurfacePrepared(CameraCaptureSession, android.view.Surface)
          */
@@ -141,7 +151,7 @@ public class CameraRxWrapper {
                 public void onConfigureFailed(@NonNull CameraCaptureSession session) {
                     Log.d(TAG, "\tcreateCaptureSession - onConfigureFailed");
                     if (!observableEmitter.isDisposed()) {
-                        observableEmitter.onError(new CreateCaptureSessionException(session));
+                        observableEmitter.onNext(new Pair<>(CaptureSessionStateEvents.ON_CONFIGURE_FAILED, session));
                     }
                 }
 
@@ -188,6 +198,7 @@ public class CameraRxWrapper {
         ON_STARTED,
         ON_PROGRESSED,
         ON_COMPLETED,
+        ON_CAPTURE_FAILED,
         ON_SEQUENCE_COMPLETED,
         ON_SEQUENCE_ABORTED
     }
@@ -219,58 +230,40 @@ public class CameraRxWrapper {
             .create(observableEmitter -> captureSession.capture(request, createCaptureCallback(observableEmitter), null));
     }
 
-@NonNull
-private static CameraCaptureSession.CaptureCallback createCaptureCallback(final ObservableEmitter<CaptureSessionData> observableEmitter) {
-    return new CameraCaptureSession.CaptureCallback() {
+    @NonNull
+    private static CameraCaptureSession.CaptureCallback createCaptureCallback(final ObservableEmitter<CaptureSessionData> observableEmitter) {
+        return new CameraCaptureSession.CaptureCallback() {
 
-        @Override
-        public void onCaptureStarted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, long timestamp, long frameNumber) {
-        }
-
-        @Override
-        public void onCaptureProgressed(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull CaptureResult partialResult) {
-        }
-
-        @Override
-        public void onCaptureCompleted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
-            if (!observableEmitter.isDisposed()) {
-                observableEmitter.onNext(new CaptureSessionData(CaptureSessionEvents.ON_COMPLETED, session, request, result));
+            @Override
+            public void onCaptureStarted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, long timestamp, long frameNumber) {
             }
-        }
 
-        @Override
-        public void onCaptureFailed(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull CaptureFailure failure) {
-            if (!observableEmitter.isDisposed()) {
-                observableEmitter.onError(new CameraCaptureFailedException(failure));
+            @Override
+            public void onCaptureProgressed(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull CaptureResult partialResult) {
             }
-        }
 
-        @Override
-        public void onCaptureSequenceCompleted(@NonNull CameraCaptureSession session, int sequenceId, long frameNumber) {
-        }
+            @Override
+            public void onCaptureCompleted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
+                if (!observableEmitter.isDisposed()) {
+                    observableEmitter.onNext(new CaptureSessionData(CaptureSessionEvents.ON_COMPLETED, session, request, result));
+                }
+            }
 
-        @Override
-        public void onCaptureSequenceAborted(@NonNull CameraCaptureSession session, int sequenceId) {
-        }
-    };
-}
+            @Override
+            public void onCaptureFailed(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull CaptureFailure failure) {
+                if (!observableEmitter.isDisposed()) {
+                    //TODO pass in event failure
+                    observableEmitter.onNext(new CaptureSessionData(CaptureSessionEvents.ON_CAPTURE_FAILED, session, request, null));
+                }
+            }
 
-    public static class CreateCaptureSessionException extends Exception {
-        public final CameraCaptureSession session;
+            @Override
+            public void onCaptureSequenceCompleted(@NonNull CameraCaptureSession session, int sequenceId, long frameNumber) {
+            }
 
-        public CreateCaptureSessionException(CameraCaptureSession session) {
-            this.session = session;
-        }
+            @Override
+            public void onCaptureSequenceAborted(@NonNull CameraCaptureSession session, int sequenceId) {
+            }
+        };
     }
-
-    public static class CameraCaptureFailedException extends Exception {
-
-        public final CaptureFailure mFailure;
-
-        public CameraCaptureFailedException(CaptureFailure failure) {
-            mFailure = failure;
-        }
-
-    }
-
 }
