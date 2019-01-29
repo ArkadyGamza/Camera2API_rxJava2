@@ -1,10 +1,10 @@
 apply plugin: 'com.android.library'
 
 android {
-    compileSdkVersion 27
+    compileSdkVersion 28
     defaultConfig {
         minSdkVersion 21
-        targetSdkVersion 21
+        targetSdkVersion 28
         versionCode 1
         versionName "1.0"
 
@@ -17,7 +17,6 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
-    buildToolsVersion '27.0.3'
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
@@ -25,13 +24,12 @@ android {
 }
 
 dependencies {
-    implementation fileTree(include: ['*.jar'], dir: 'libs')
-    implementation 'com.android.support:appcompat-v7:27.1.1'
-    implementation 'io.reactivex.rxjava2:rxandroid:2.0.2'
-    implementation 'android.arch.lifecycle:common-java8:1.1.1'
+    implementation 'androidx.appcompat:appcompat:1.0.2'
+    implementation 'io.reactivex.rxjava2:rxandroid:2.1.0'
+    implementation 'androidx.lifecycle:lifecycle-common-java8:2.1.0-alpha01'
     // Because RxAndroid releases are few and far between, it is recommended you also
     // explicitly depend on RxJava's latest version for bug fixes and new features.
-    implementation "io.reactivex.rxjava2:rxjava:2.1.17"
+    implementation "io.reactivex.rxjava2:rxjava:2.2.2"
 
     testImplementation 'junit:junit:4.12'
     androidTestImplementation 'com.android.support.test:runner:1.0.2'
